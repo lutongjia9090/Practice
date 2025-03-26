@@ -18,3 +18,8 @@ mv bazel-bin/project/hashmap_benchmark/benchmark ./bin/benchmark
 ./bin/benchmark
 
 bazelisk test //project/thread_pool:thread_pool_test
+
+bazelisk build //project/net_server:server
+bazelisk build //project/net_server:client
+mv bazel-bin/project/net_server/server ./bin/server
+mv bazel-bin/project/net_server/client ./bin/client
