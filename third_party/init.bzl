@@ -17,5 +17,33 @@ def _init_local_repos():
         if name not in native.existing_rules():
             native.local_repository(name = name, path = path)
 
+def _init_http_repos():
+    if "parallel_hashmap" not in native.existing_rules():
+        http_archive(
+            name = "parallel_hashmap",  # no consensus
+            urls = [
+                "https://github.com/greg7mdp/parallel-hashmap/archive/refs/tags/v1.3.8.tar.gz",
+            ],
+            strip_prefix = "parallel-hashmap-1.3.8",
+            sha256 = "c4562ea360dc1dcaddd96a0494c753400364a52c7aa9750de49d8e6a222d28d3",
+            build_file = "//third_party:parallel_hashmap.BUILD",
+            patch_cmds = [
+                "mkdir -p include/parallel_hashmap",
+                "mv parallel_hashmap/*.h include/parallel_hashmap",
+            ],
+        )
+
+    if "unordered_dense" not in native.existing_rules():
+        http_archive(
+            name = "unordered_dense",  # no consensus
+            urls = [
+                "https://github.com/martinus/unordered_dense/archive/refs/tags/v4.5.0.tar.gz",
+            ],
+            strip_prefix = "unordered_dense-4.5.0",
+            sha256 = "2364ce4bc4c23bd02549bbb3a7572d881684cd46057f3737fd53be53669743aa",
+            build_file = "//third_party:unordered_dense.BUILD",
+        )
+
 def init():
+    _init_http_repos()
     _init_local_repos()

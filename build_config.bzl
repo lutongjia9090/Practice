@@ -1,5 +1,5 @@
-# Copyright 2021 Vipshop Inc. All Rights Reserved.
-# Author: Yafei Zhang (yafei06.zhang@vipshop.com)
+# Copyright 2024 Tobijah.lu Inc. All Rights Reserved.
+# Author: Tongjia Lu (lutonjia@163.com)
 #
 
 # buildifier: disable=module-docstring

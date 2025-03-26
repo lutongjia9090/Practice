@@ -9,6 +9,10 @@ cd $(dirname $0)
 
 # Build && Run
 source /opt/rh/devtoolset-9/enable
-bazelisk build //test:test
-mv bazel-bin/test/test ./bin/test
+bazelisk build //project/test:test
+mv bazel-bin/project/test/test ./bin/test
 ./bin/test
+
+bazelisk build //project/hashmap_benchmark:benchmark
+mv bazel-bin/project/hashmap_benchmark/benchmark ./bin/benchmark
+./bin/benchmark

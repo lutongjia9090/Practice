@@ -1,0 +1,333 @@
+
+
+load(
+    "//:build_config.bzl",
+    "absl_cc_binary",
+    "absl_cc_library",
+)
+
+licenses(["notice"])
+
+config_setting(
+    name = "old_cpu",
+    define_values = {
+        "old_cpu": "true",
+    },
+    visibility = [
+        "//absl:__subpackages__",
+    ],
+)
+
+absl_cc_library(
+    name = "traits",
+    hdrs = [
+        "traits.h",
+    ],
+    deps = [
+        "//absl/base:config",
+    ],
+)
+
+absl_cc_library(
+    name = "distribution_caller",
+    hdrs = [
+        "distribution_caller.h",
+    ],
+    deps = [
+        "//absl/base:config",
+        "//absl/base:fast_type_id",
+        "//absl/utility",
+    ],
+)
+
+absl_cc_library(
+    name = "fast_uniform_bits",
+    hdrs = [
+        "fast_uniform_bits.h",
+    ],
+    deps = [
+        "//absl/base:config",
+        "//absl/meta:type_traits",
+    ],
+)
+
+absl_cc_library(
+    name = "seed_material",
+    srcs = [
+        "seed_material.cc",
+    ],
+    hdrs = [
+        "seed_material.h",
+    ],
+    deps = [
+        ":fast_uniform_bits",
+        "//absl/base:core_headers",
+        "//absl/base:raw_logging_internal",
+        "//absl/strings",
+        "//absl/types:optional",
+        "//absl/types:span",
+    ],
+)
+
+absl_cc_library(
+    name = "pool_urbg",
+    srcs = [
+        "pool_urbg.cc",
+    ],
+    hdrs = [
+        "pool_urbg.h",
+    ],
+    deps = [
+        ":randen",
+        ":seed_material",
+        ":traits",
+        "//absl/base",
+        "//absl/base:config",
+        "//absl/base:core_headers",
+        "//absl/base:endian",
+        "//absl/base:raw_logging_internal",
+        "//absl/random:seed_gen_exception",
+        "//absl/types:span",
+    ],
+)
+
+absl_cc_library(
+    name = "salted_seed_seq",
+    hdrs = [
+        "salted_seed_seq.h",
+    ],
+    deps = [
+        ":seed_material",
+        "//absl/container:inlined_vector",
+        "//absl/meta:type_traits",
+        "//absl/types:optional",
+        "//absl/types:span",
+    ],
+)
+
+absl_cc_library(
+    name = "iostream_state_saver",
+    hdrs = [
+        "iostream_state_saver.h",
+    ],
+    deps = [
+        "//absl/meta:type_traits",
+        "//absl/numeric:int128",
+    ],
+)
+
+absl_cc_library(
+    name = "generate_real",
+    hdrs = [
+        "generate_real.h",
+    ],
+    deps = [
+        ":fastmath",
+        ":traits",
+        "//absl/meta:type_traits",
+        "//absl/numeric:bits",
+    ],
+)
+
+absl_cc_library(
+    name = "fastmath",
+    hdrs = [
+        "fastmath.h",
+    ],
+    deps = [
+        "//absl/numeric:bits",
+    ],
+)
+
+absl_cc_library(
+    name = "wide_multiply",
+    hdrs = [
+        "wide_multiply.h",
+    ],
+    deps = [
+        ":traits",
+        "//absl/base:config",
+        "//absl/numeric:bits",
+        "//absl/numeric:int128",
+    ],
+)
+
+absl_cc_library(
+    name = "nonsecure_base",
+    hdrs = [
+        "nonsecure_base.h",
+    ],
+    deps = [
+        ":pool_urbg",
+        ":salted_seed_seq",
+        ":seed_material",
+        "//absl/base:core_headers",
+        "//absl/meta:type_traits",
+        "//absl/types:optional",
+        "//absl/types:span",
+    ],
+)
+
+absl_cc_library(
+    name = "pcg_engine",
+    hdrs = [
+        "pcg_engine.h",
+    ],
+    deps = [
+        ":fastmath",
+        ":iostream_state_saver",
+        "//absl/base:config",
+        "//absl/meta:type_traits",
+        "//absl/numeric:bits",
+        "//absl/numeric:int128",
+    ],
+)
+
+absl_cc_library(
+    name = "randen_engine",
+    hdrs = [
+        "randen_engine.h",
+    ],
+    deps = [
+        ":iostream_state_saver",
+        ":randen",
+        "//absl/base:endian",
+        "//absl/meta:type_traits",
+    ],
+)
+
+absl_cc_library(
+    name = "platform",
+    srcs = [
+        "randen_round_keys.cc",
+    ],
+    hdrs = [
+        "randen_traits.h",
+    ],
+    textual_hdrs = [
+        "platform.h",
+    ],
+    deps = [
+        "//absl/base:config",
+    ],
+)
+
+absl_cc_library(
+    name = "randen",
+    srcs = [
+        "randen.cc",
+    ],
+    hdrs = [
+        "randen.h",
+    ],
+    deps = [
+        ":platform",
+        ":randen_hwaes",
+        ":randen_slow",
+        "//absl/base:raw_logging_internal",
+    ],
+)
+
+absl_cc_library(
+    name = "randen_slow",
+    srcs = [
+        "randen_slow.cc",
+    ],
+    hdrs = [
+        "randen_slow.h",
+    ],
+    deps = [
+        ":platform",
+        "//absl/base:config",
+        "//absl/base:core_headers",
+    ],
+)
+
+absl_cc_library(
+    name = "randen_hwaes",
+    srcs = [
+        "randen_detect.cc",
+    ],
+    hdrs = [
+        "randen_detect.h",
+        "randen_hwaes.h",
+    ],
+    deps = [
+        ":platform",
+        ":randen_hwaes_impl",
+        "//absl/base:config",
+    ],
+)
+
+# build with --save_temps to see assembly language output.
+absl_cc_library(
+    name = "randen_hwaes_impl",
+    srcs = [
+        "randen_hwaes.cc",
+        "randen_hwaes.h",
+    ],
+    copts = select({
+        ":old_cpu": [],
+        "@platforms//cpu:x86_64": [
+            "-maes",
+            "-msse4.1",
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":platform",
+        "//absl/base:config",
+        "//absl/base:core_headers",
+    ],
+)
+
+absl_cc_binary(
+    name = "gaussian_distribution_gentables",
+    srcs = [
+        "gaussian_distribution_gentables.cc",
+    ],
+    deps = [
+        "//absl/base:core_headers",
+        "//absl/random:distributions",
+    ],
+)
+
+absl_cc_library(
+    name = "mock_helpers",
+    hdrs = [
+        "mock_helpers.h",
+    ],
+    deps = [
+        "//absl/base:fast_type_id",
+        "//absl/types:optional",
+    ],
+)
+
+absl_cc_library(
+    name = "nanobenchmark",
+    srcs = [
+        "nanobenchmark.cc",
+    ],
+    textual_hdrs = [
+        "nanobenchmark.h",
+    ],
+    deps = [
+        ":platform",
+        ":randen_engine",
+        "//absl/base:config",
+        "//absl/base:core_headers",
+        "//absl/base:raw_logging_internal",
+    ],
+)
+
+absl_cc_library(
+    name = "uniform_helper",
+    hdrs = [
+        "uniform_helper.h",
+    ],
+    deps = [
+        ":traits",
+        "//absl/base:config",
+        "//absl/meta:type_traits",
+    ],
+)

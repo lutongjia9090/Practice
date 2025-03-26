@@ -1,0 +1,267 @@
+load(
+    "//:build_config.bzl",
+    "absl_cc_library",
+)
+
+licenses(["notice"])
+
+absl_cc_library(
+    name = "path_util",
+    hdrs = [
+        "internal/path_util.h",
+    ],
+    visibility = [
+        "//absl/flags:__pkg__",
+    ],
+    deps = [
+        "//absl/base:config",
+        "//absl/strings",
+    ],
+)
+
+absl_cc_library(
+    name = "program_name",
+    srcs = [
+        "internal/program_name.cc",
+    ],
+    hdrs = [
+        "internal/program_name.h",
+    ],
+    visibility = [
+        "//absl/flags:__pkg__",
+    ],
+    deps = [
+        ":path_util",
+        "//absl/base:config",
+        "//absl/base:core_headers",
+        "//absl/strings",
+        "//absl/synchronization",
+    ],
+)
+
+absl_cc_library(
+    name = "config",
+    srcs = [
+        "usage_config.cc",
+    ],
+    hdrs = [
+        "config.h",
+        "usage_config.h",
+    ],
+    deps = [
+        ":path_util",
+        ":program_name",
+        "//absl/base:config",
+        "//absl/base:core_headers",
+        "//absl/strings",
+        "//absl/synchronization",
+    ],
+)
+
+absl_cc_library(
+    name = "marshalling",
+    srcs = [
+        "marshalling.cc",
+    ],
+    hdrs = [
+        "marshalling.h",
+    ],
+    deps = [
+        "//absl/base:config",
+        "//absl/base:core_headers",
+        "//absl/base:log_severity",
+        "//absl/strings",
+        "//absl/strings:str_format",
+    ],
+)
+
+absl_cc_library(
+    name = "commandlineflag_internal",
+    srcs = [
+        "internal/commandlineflag.cc",
+    ],
+    hdrs = [
+        "internal/commandlineflag.h",
+    ],
+    deps = [
+        "//absl/base:config",
+        "//absl/base:fast_type_id",
+    ],
+)
+
+absl_cc_library(
+    name = "commandlineflag",
+    srcs = [
+        "commandlineflag.cc",
+    ],
+    hdrs = [
+        "commandlineflag.h",
+    ],
+    deps = [
+        ":commandlineflag_internal",
+        "//absl/base:config",
+        "//absl/base:fast_type_id",
+        "//absl/strings",
+        "//absl/types:optional",
+    ],
+)
+
+absl_cc_library(
+    name = "private_handle_accessor",
+    srcs = [
+        "internal/private_handle_accessor.cc",
+    ],
+    hdrs = [
+        "internal/private_handle_accessor.h",
+    ],
+    visibility = [
+        "//absl/flags:__pkg__",
+    ],
+    deps = [
+        ":commandlineflag",
+        ":commandlineflag_internal",
+        "//absl/base:config",
+        "//absl/strings",
+    ],
+)
+
+absl_cc_library(
+    name = "reflection",
+    srcs = [
+        "reflection.cc",
+    ],
+    hdrs = [
+        "internal/registry.h",
+        "reflection.h",
+    ],
+    deps = [
+        ":commandlineflag",
+        ":commandlineflag_internal",
+        ":config",
+        ":private_handle_accessor",
+        "//absl/base:config",
+        "//absl/base:core_headers",
+        "//absl/container:flat_hash_map",
+        "//absl/strings",
+        "//absl/synchronization",
+    ],
+)
+
+absl_cc_library(
+    name = "flag_internal",
+    srcs = [
+        "internal/flag.cc",
+    ],
+    hdrs = [
+        "internal/flag.h",
+        "internal/sequence_lock.h",
+    ],
+    visibility = [
+        "//absl/base:__subpackages__",
+    ],
+    deps = [
+        ":commandlineflag",
+        ":commandlineflag_internal",
+        ":config",
+        ":marshalling",
+        ":reflection",
+        "//absl/base",
+        "//absl/base:config",
+        "//absl/base:core_headers",
+        "//absl/memory",
+        "//absl/meta:type_traits",
+        "//absl/strings",
+        "//absl/synchronization",
+        "//absl/utility",
+    ],
+)
+
+absl_cc_library(
+    name = "flag",
+    srcs = [
+        "flag.cc",
+    ],
+    hdrs = [
+        "declare.h",
+        "flag.h",
+    ],
+    deps = [
+        ":config",
+        ":flag_internal",
+        ":reflection",
+        "//absl/base",
+        "//absl/base:config",
+        "//absl/base:core_headers",
+        "//absl/strings",
+    ],
+)
+
+absl_cc_library(
+    name = "usage_internal",
+    srcs = [
+        "internal/usage.cc",
+    ],
+    hdrs = [
+        "internal/usage.h",
+    ],
+    visibility = [
+        "//absl/flags:__pkg__",
+    ],
+    deps = [
+        ":commandlineflag",
+        ":config",
+        ":flag",
+        ":flag_internal",
+        ":path_util",
+        ":private_handle_accessor",
+        ":program_name",
+        ":reflection",
+        "//absl/base:config",
+        "//absl/base:core_headers",
+        "//absl/strings",
+    ],
+)
+
+absl_cc_library(
+    name = "usage",
+    srcs = [
+        "usage.cc",
+    ],
+    hdrs = [
+        "usage.h",
+    ],
+    deps = [
+        ":usage_internal",
+        "//absl/base:config",
+        "//absl/base:core_headers",
+        "//absl/strings",
+        "//absl/synchronization",
+    ],
+)
+
+absl_cc_library(
+    name = "parse",
+    srcs = [
+        "parse.cc",
+    ],
+    hdrs = [
+        "internal/parse.h",
+        "parse.h",
+    ],
+    deps = [
+        ":commandlineflag",
+        ":commandlineflag_internal",
+        ":config",
+        ":flag",
+        ":flag_internal",
+        ":private_handle_accessor",
+        ":program_name",
+        ":reflection",
+        ":usage",
+        ":usage_internal",
+        "//absl/base:config",
+        "//absl/base:core_headers",
+        "//absl/strings",
+        "//absl/synchronization",
+    ],
+)
