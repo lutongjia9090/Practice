@@ -16,3 +16,5 @@ mv bazel-bin/project/test/test ./bin/test
 bazelisk build //project/hashmap_benchmark:benchmark
 mv bazel-bin/project/hashmap_benchmark/benchmark ./bin/benchmark
 ./bin/benchmark
+
+bazelisk test //project/thread_pool:thread_pool_test

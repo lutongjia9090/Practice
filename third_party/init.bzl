@@ -44,6 +44,21 @@ def _init_http_repos():
             build_file = "//third_party:unordered_dense.BUILD",
         )
 
+    if "concurrentqueue" not in native.existing_rules():
+        http_archive(
+            name = "concurrentqueue",  # no consensus
+            urls = [
+                "https://github.com/cameron314/concurrentqueue/archive/refs/tags/v1.0.3.tar.gz",
+            ],
+            strip_prefix = "concurrentqueue-1.0.3",
+            sha256 = "eb37336bf9ae59aca7b954db3350d9b30d1cab24b96c7676f36040aa76e915e8",
+            build_file = "//third_party:concurrentqueue.BUILD",
+            patch_cmds = [
+                "mkdir include",
+                "mv *.h internal include",
+            ],
+        )
+
 def init():
     _init_http_repos()
     _init_local_repos()
