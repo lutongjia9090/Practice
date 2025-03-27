@@ -3,9 +3,11 @@
 //
 
 #include "epoll.h"
+#include "channel.h"
 #include <cstring>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/epoll.h>
 #include <unistd.h>
 
 Epoll::Epoll() {
@@ -18,18 +20,29 @@ Epoll::Epoll() {
 
 Epoll::~Epoll() { close(epoll_fd_); }
 
-void Epoll::AddFd(int fd, uint32_t type) {
-  epoll_event ev;
-  ev.events = type;
-  ev.data.fd = fd;
-  epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, fd, &ev);
-}
-
 int Epoll::GetFd() const { return epoll_fd_; }
 
-Epoll::events Epoll::Loop(int timeout) {
-  events evs;
-  bzero(evs_, sizeof(evs));
+void Epoll::UpdateChannel(Channel *ch) {
+  epoll_event ev;
+  ev.events = ch->GetEvent();
+  ev.data.ptr = ch;
+
+  if (ch->IsInepool()) {
+    if (epoll_ctl(epoll_fd_, EPOLL_CTL_MOD, ch->GetFd(), &ev) == -1) {
+      printf("Failed to modify channel.");
+      exit(-1);
+    }
+  } else {
+    if (epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, ch->GetFd(), &ev) == -1) {
+      printf("Failed to add channel.");
+      exit(-1);
+    }
+    ch->SetInEpoll();
+  }
+}
+std::vector<Channel *> Epoll::Loop(int timeout) {
+  std::vector<Channel *> channels;
+  bzero(evs_, sizeof(evs_));
   int fds = epoll_wait(epoll_fd_, evs_, MAX_EVENTS, timeout);
   if (fds < 0) {
     printf("epoll_wait failed.\n");
@@ -38,11 +51,13 @@ Epoll::events Epoll::Loop(int timeout) {
 
   if (fds == 0) {
     printf("epoll_wait timeout.\n");
-    return evs;
+    return channels;
   }
 
   for (int i = 0; i < fds; ++i) {
-    evs.emplace_back(evs_[i]);
+    Channel *ch = (Channel *)evs_[i].data.ptr;
+    ch->SetREvent(evs_[i].events);
+    channels.emplace_back(ch);
   }
-  return evs;
+  return channels;
 }

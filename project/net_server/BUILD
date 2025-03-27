@@ -32,11 +32,13 @@ custom_cc_library(
 )
 
 custom_cc_library(
-    name = "epoll",
+    name = "channel",
     hdrs = [
+        "channel.h",
         "epoll.h",
     ],
     srcs = [
+        "channel.cc",
         "epoll.cc",
     ],
 )
@@ -52,7 +54,7 @@ custom_cc_binary(
     deps = [
         "inet_adress",
         "socket",
-        "epoll",
+        "channel",
     ],
 )
 

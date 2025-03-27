@@ -8,18 +8,17 @@
 
 static constexpr int MAX_EVENTS = 100;
 
-class Epoll {
-public:
-  using events = std::vector<epoll_event>;
+class Channel;
 
+class Epoll {
 public:
   Epoll();
   ~Epoll();
 
 public:
   int GetFd() const;
-  void AddFd(int fd, uint32_t type);
-  events Loop(int timeout);
+  void UpdateChannel(Channel *ch);
+  std::vector<Channel *> Loop(int timeout = -1);
 
 private:
   int epoll_fd_ = -1;
