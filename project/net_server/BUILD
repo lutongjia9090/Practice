@@ -41,6 +41,10 @@ custom_cc_library(
         "channel.cc",
         "epoll.cc",
     ],
+    deps = [
+        "inet_adress",
+        "socket",
+    ],
 )
 
 custom_cc_binary(
