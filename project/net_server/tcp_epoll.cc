@@ -2,6 +2,7 @@
 // Author: Tongjia Lu (lutonjia@163.com)
 //
 
+#include "epoll.h"
 #include "inet_adress.h"
 #include "socket.h"
 #include <arpa/inet.h>
@@ -35,48 +36,32 @@ int main(int argc, char *argv[]) {
   server_sock.Bind(*server_addr.GetSockAddr());
   server_sock.Listen();
 
-  int epoll_fd = epoll_create(1);
-
   // prepare epoll event for listen fd
-  epoll_event ev;
-  ev.events = EPOLLIN;
-  ev.data.fd = server_sock.GetFd();
-  epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server_sock.GetFd(), &ev);
+  Epoll epoll;
+  epoll.AddFd(server_sock.GetFd(), EPOLLIN);
 
-  struct epoll_event evs[10];
+  std::vector<epoll_event> evs;
   while (true) {
-    int nfds = epoll_wait(epoll_fd, evs, 10, -1);
-    if (nfds < 0) {
-      printf("epoll_wait failed.\n");
-      break;
-    }
-
-    if (nfds == 0) {
-      printf("epoll_wait timeout.\n");
-      continue;
-    }
-
-    for (int i = 0; i < nfds; ++i) {
+    evs = epoll.Loop(-1);
+    for (auto &ev : evs) {
       // client close, use `EPOLLIN` in some systems(recv() return 0)
-      if (evs[i].events & EPOLLRDHUP) {
-        printf("Client(event fd=%d) disconnected.", evs[i].data.fd);
-        close(evs[i].data.fd);
-      } else if (evs[i].events & EPOLLIN) {
-        if (evs[i].data.fd == server_sock.GetFd()) {
+      if (ev.events & EPOLLRDHUP) {
+        printf("Client(event fd=%d) disconnected.", ev.data.fd);
+        close(ev.data.fd);
+      } else if (ev.events & EPOLLIN) {
+        if (ev.data.fd == server_sock.GetFd()) {
           InetAdress client_addr;
           Socket *client_sock = new Socket(server_sock.Accept(client_addr));
 
-          ev.data.fd = client_sock->GetFd();
-          ev.events = EPOLLIN | EPOLLET;
-          epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_sock->GetFd(), &ev);
+          epoll.AddFd(client_sock->GetFd(), EPOLLIN | EPOLLET);
         } else {
           char buffer[1024];
           while (true) {
             bzero(&buffer, sizeof(buffer));
-            ssize_t nread = read(evs[i].data.fd, buffer, sizeof(buffer));
+            ssize_t nread = read(ev.data.fd, buffer, sizeof(buffer));
             if (nread > 0) {
-              printf("recv(eventfd=%d): %s\n", evs[i].data.fd, buffer);
-              send(evs[i].data.fd, buffer, strlen(buffer), 0);
+              printf("recv(eventfd=%d): %s\n", ev.data.fd, buffer);
+              send(ev.data.fd, buffer, strlen(buffer), 0);
             } else if (nread == -1 &&
                        errno == EINTR) { // Signal interrupt while reading
               continue;
@@ -85,16 +70,16 @@ int main(int argc, char *argv[]) {
                         (errno == EWOULDBLOCK))) { // Finished reading
               break;
             } else if (nread == 0) {
-              printf("Client(eventfd=%d) disconnected.\n", evs[i].data.fd);
-              close(evs[i].data.fd);
+              printf("Client(eventfd=%d) disconnected.\n", ev.data.fd);
+              close(ev.data.fd);
               break;
             }
           }
         }
-      } else if (evs[i].events & EPOLLOUT) { // Write event
-      } else {                               // error
-        printf("Client(eventfd=%d) error.\n", evs[i].data.fd);
-        close(evs[i].data.fd);
+      } else if (ev.events & EPOLLOUT) { // Write event
+      } else {                           // error
+        printf("Client(eventfd=%d) error.\n", ev.data.fd);
+        close(ev.data.fd);
       }
     }
   }

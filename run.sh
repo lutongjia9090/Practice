@@ -9,6 +9,7 @@ cd $(dirname $0)
 
 # Build && Run
 source /opt/rh/devtoolset-9/enable
+
 bazelisk build //project/test:test
 mv bazel-bin/project/test/test ./bin/test
 ./bin/test
