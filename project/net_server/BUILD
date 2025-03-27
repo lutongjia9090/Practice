@@ -4,7 +4,31 @@
 
 load(
     "//:build_config.bzl",
+    "custom_cc_library",
     "custom_cc_binary",
+)
+
+custom_cc_library(
+    name = "inet_adress",
+    hdrs = [
+        "inet_adress.h",
+    ],
+    srcs = [
+        "inet_adress.cc",
+    ],
+)
+
+custom_cc_library(
+    name = "socket",
+    hdrs = [
+        "socket.h",
+    ],
+    srcs = [
+        "socket.cc",
+    ],
+    deps = [
+        "inet_adress",
+    ],
 )
 
 custom_cc_binary(
@@ -14,6 +38,10 @@ custom_cc_binary(
     ],
     copts = [
         "-std=c++17",
+    ],
+    deps = [
+        "inet_adress",
+        "socket",
     ],
 )
 

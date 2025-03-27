@@ -1,3 +1,7 @@
+// Copyright 2025 Tobijah.lu Inc. All Rights Reserved.
+// Author: Tongjia Lu (lutonjia@163.com)
+//
+
 #include <arpa/inet.h>
 #include <cstring>
 #include <netinet/in.h>

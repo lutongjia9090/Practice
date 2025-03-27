@@ -21,5 +21,6 @@ bazelisk test //project/thread_pool:thread_pool_test
 
 bazelisk build //project/net_server:server
 bazelisk build //project/net_server:client
+rm -rf ./bin/server ./bin/client
 mv bazel-bin/project/net_server/server ./bin/server
 mv bazel-bin/project/net_server/client ./bin/client
