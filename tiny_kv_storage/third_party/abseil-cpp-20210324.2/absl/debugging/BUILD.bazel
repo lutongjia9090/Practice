@@ -1,0 +1,158 @@
+load(
+    "//:build_config.bzl",
+    "absl_cc_library",
+)
+
+licenses(["notice"])
+
+absl_cc_library(
+    name = "stacktrace",
+    srcs = [
+        "internal/stacktrace_aarch64-inl.inc",
+        "internal/stacktrace_arm-inl.inc",
+        "internal/stacktrace_config.h",
+        "internal/stacktrace_generic-inl.inc",
+        "internal/stacktrace_powerpc-inl.inc",
+        "internal/stacktrace_unimplemented-inl.inc",
+        "internal/stacktrace_win32-inl.inc",
+        "internal/stacktrace_x86-inl.inc",
+        "stacktrace.cc",
+    ],
+    hdrs = [
+        "stacktrace.h",
+    ],
+    deps = [
+        ":debugging_internal",
+        "//absl/base:config",
+        "//absl/base:core_headers",
+    ],
+)
+
+absl_cc_library(
+    name = "symbolize",
+    srcs = [
+        "symbolize.cc",
+        "symbolize_darwin.inc",
+        "symbolize_elf.inc",
+        "symbolize_unimplemented.inc",
+        "symbolize_win32.inc",
+    ],
+    hdrs = [
+        "internal/symbolize.h",
+        "symbolize.h",
+    ],
+    deps = [
+        ":debugging_internal",
+        ":demangle_internal",
+        "//absl/base",
+        "//absl/base:config",
+        "//absl/base:core_headers",
+        "//absl/base:dynamic_annotations",
+        "//absl/base:malloc_internal",
+        "//absl/base:raw_logging_internal",
+        "//absl/strings",
+    ],
+)
+
+absl_cc_library(
+    name = "examine_stack",
+    srcs = [
+        "internal/examine_stack.cc",
+    ],
+    hdrs = [
+        "internal/examine_stack.h",
+    ],
+    visibility = [
+        "//visibility:private",
+    ],
+    deps = [
+        ":stacktrace",
+        ":symbolize",
+        "//absl/base:config",
+        "//absl/base:core_headers",
+        "//absl/base:raw_logging_internal",
+    ],
+)
+
+absl_cc_library(
+    name = "failure_signal_handler",
+    srcs = [
+        "failure_signal_handler.cc",
+    ],
+    hdrs = [
+        "failure_signal_handler.h",
+    ],
+    deps = [
+        ":examine_stack",
+        ":stacktrace",
+        "//absl/base",
+        "//absl/base:config",
+        "//absl/base:core_headers",
+        "//absl/base:errno_saver",
+        "//absl/base:raw_logging_internal",
+    ],
+)
+
+absl_cc_library(
+    name = "debugging_internal",
+    srcs = [
+        "internal/address_is_readable.cc",
+        "internal/elf_mem_image.cc",
+        "internal/vdso_support.cc",
+    ],
+    hdrs = [
+        "internal/address_is_readable.h",
+        "internal/elf_mem_image.h",
+        "internal/vdso_support.h",
+    ],
+    deps = [
+        "//absl/base:config",
+        "//absl/base:core_headers",
+        "//absl/base:dynamic_annotations",
+        "//absl/base:errno_saver",
+        "//absl/base:raw_logging_internal",
+    ],
+)
+
+absl_cc_library(
+    name = "demangle_internal",
+    srcs = [
+        "internal/demangle.cc",
+    ],
+    hdrs = [
+        "internal/demangle.h",
+    ],
+    deps = [
+        "//absl/base",
+        "//absl/base:config",
+        "//absl/base:core_headers",
+    ],
+)
+
+absl_cc_library(
+    name = "leak_check",
+    srcs = [
+        "leak_check.cc",
+    ],
+    hdrs = [
+        "leak_check.h",
+    ],
+    deps = [
+        "//absl/base:config",
+        "//absl/base:core_headers",
+    ],
+)
+
+# Adding a dependency to leak_check_disable will disable
+# sanitizer leak checking (asan/lsan) in a test without
+# the need to mess around with build features.
+absl_cc_library(
+    name = "leak_check_disable",
+    srcs = [
+        "leak_check_disable.cc",
+    ],
+    deps = [
+        "//absl/base:config",
+    ],
+    alwayslink = True,
+)

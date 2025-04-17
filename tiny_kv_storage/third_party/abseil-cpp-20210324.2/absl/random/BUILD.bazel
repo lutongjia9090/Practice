@@ -1,0 +1,105 @@
+load(
+    "//:build_config.bzl",
+    "absl_cc_library",
+)
+
+licenses(["notice"])
+
+absl_cc_library(
+    name = "random",
+    hdrs = [
+        "random.h",
+    ],
+    deps = [
+        ":distributions",
+        ":seed_sequences",
+        "//absl/random/internal:nonsecure_base",
+        "//absl/random/internal:pcg_engine",
+        "//absl/random/internal:pool_urbg",
+        "//absl/random/internal:randen_engine",
+    ],
+)
+
+absl_cc_library(
+    name = "distributions",
+    srcs = [
+        "discrete_distribution.cc",
+        "gaussian_distribution.cc",
+    ],
+    hdrs = [
+        "bernoulli_distribution.h",
+        "beta_distribution.h",
+        "discrete_distribution.h",
+        "distributions.h",
+        "exponential_distribution.h",
+        "gaussian_distribution.h",
+        "log_uniform_int_distribution.h",
+        "poisson_distribution.h",
+        "uniform_int_distribution.h",
+        "uniform_real_distribution.h",
+        "zipf_distribution.h",
+    ],
+    deps = [
+        "//absl/base:base_internal",
+        "//absl/base:config",
+        "//absl/base:core_headers",
+        "//absl/meta:type_traits",
+        "//absl/numeric:bits",
+        "//absl/random/internal:distribution_caller",
+        "//absl/random/internal:fast_uniform_bits",
+        "//absl/random/internal:fastmath",
+        "//absl/random/internal:generate_real",
+        "//absl/random/internal:iostream_state_saver",
+        "//absl/random/internal:traits",
+        "//absl/random/internal:uniform_helper",
+        "//absl/random/internal:wide_multiply",
+        "//absl/strings",
+    ],
+)
+
+absl_cc_library(
+    name = "seed_gen_exception",
+    srcs = [
+        "seed_gen_exception.cc",
+    ],
+    hdrs = [
+        "seed_gen_exception.h",
+    ],
+    deps = [
+        "//absl/base:config",
+    ],
+)
+
+absl_cc_library(
+    name = "seed_sequences",
+    srcs = [
+        "seed_sequences.cc",
+    ],
+    hdrs = [
+        "seed_sequences.h",
+    ],
+    deps = [
+        ":seed_gen_exception",
+        "//absl/container:inlined_vector",
+        "//absl/random/internal:nonsecure_base",
+        "//absl/random/internal:pool_urbg",
+        "//absl/random/internal:salted_seed_seq",
+        "//absl/random/internal:seed_material",
+        "//absl/types:span",
+    ],
+)
+
+absl_cc_library(
+    name = "bit_gen_ref",
+    hdrs = [
+        "bit_gen_ref.h",
+    ],
+    deps = [
+        ":random",
+        "//absl/base:core_headers",
+        "//absl/base:fast_type_id",
+        "//absl/meta:type_traits",
+        "//absl/random/internal:distribution_caller",
+        "//absl/random/internal:fast_uniform_bits",
+    ],
+)

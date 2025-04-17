@@ -1,0 +1,139 @@
+load(
+    "//:build_config.bzl",
+    "absl_cc_library",
+)
+
+licenses(["notice"])
+
+absl_cc_library(
+    name = "any",
+    hdrs = [
+        "any.h",
+    ],
+    deps = [
+        ":bad_any_cast",
+        "//absl/base:config",
+        "//absl/base:core_headers",
+        "//absl/base:fast_type_id",
+        "//absl/meta:type_traits",
+        "//absl/utility",
+    ],
+)
+
+absl_cc_library(
+    name = "bad_any_cast",
+    hdrs = [
+        "bad_any_cast.h",
+    ],
+    deps = [
+        ":bad_any_cast_impl",
+        "//absl/base:config",
+    ],
+)
+
+absl_cc_library(
+    name = "bad_any_cast_impl",
+    srcs = [
+        "bad_any_cast.cc",
+        "bad_any_cast.h",
+    ],
+    visibility = [
+        "//visibility:private",
+    ],
+    deps = [
+        "//absl/base:config",
+        "//absl/base:raw_logging_internal",
+    ],
+)
+
+absl_cc_library(
+    name = "span",
+    srcs = [
+        "internal/span.h",
+    ],
+    hdrs = [
+        "span.h",
+    ],
+    deps = [
+        "//absl/algorithm",
+        "//absl/base:core_headers",
+        "//absl/base:throw_delegate",
+        "//absl/meta:type_traits",
+    ],
+)
+
+absl_cc_library(
+    name = "optional",
+    srcs = [
+        "internal/optional.h",
+    ],
+    hdrs = [
+        "optional.h",
+    ],
+    deps = [
+        ":bad_optional_access",
+        "//absl/base:base_internal",
+        "//absl/base:config",
+        "//absl/base:core_headers",
+        "//absl/memory",
+        "//absl/meta:type_traits",
+        "//absl/utility",
+    ],
+)
+
+absl_cc_library(
+    name = "bad_optional_access",
+    srcs = [
+        "bad_optional_access.cc",
+    ],
+    hdrs = [
+        "bad_optional_access.h",
+    ],
+    deps = [
+        "//absl/base:config",
+        "//absl/base:raw_logging_internal",
+    ],
+)
+
+absl_cc_library(
+    name = "bad_variant_access",
+    srcs = [
+        "bad_variant_access.cc",
+    ],
+    hdrs = [
+        "bad_variant_access.h",
+    ],
+    deps = [
+        "//absl/base:config",
+        "//absl/base:raw_logging_internal",
+    ],
+)
+
+absl_cc_library(
+    name = "variant",
+    srcs = [
+        "internal/variant.h",
+    ],
+    hdrs = [
+        "variant.h",
+    ],
+    deps = [
+        ":bad_variant_access",
+        "//absl/base:base_internal",
+        "//absl/base:config",
+        "//absl/base:core_headers",
+        "//absl/meta:type_traits",
+        "//absl/utility",
+    ],
+)
+
+absl_cc_library(
+    name = "compare",
+    hdrs = [
+        "compare.h",
+    ],
+    deps = [
+        "//absl/base:core_headers",
+        "//absl/meta:type_traits",
+    ],
+)
