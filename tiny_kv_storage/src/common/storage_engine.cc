@@ -47,7 +47,7 @@ KVMap MemoryStorage::GetAllEntries() {
 }
 
 /************************************************************************/
-/* MemoryStorage */
+/* FileStorage */
 /************************************************************************/
 FileStorage::FileStorage(const std::string &file_path) : file_path_(file_path) {
   Load();

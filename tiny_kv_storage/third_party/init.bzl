@@ -29,6 +29,16 @@ def _init_http_repos():
             build_file = "//third_party:com_github_google_benchmark.BUILD",
         )
 
+    if "com_github_gflags_gflags" not in native.existing_rules():
+        http_archive(
+            name = "com_github_gflags_gflags",
+            urls = [
+                "https://github.com/gflags/gflags/archive/refs/tags/v2.2.2.tar.gz",
+            ],
+            strip_prefix = "gflags-2.2.2",
+            sha256 = "34af2f15cf7367513b352bdcd2493ab14ce43692d2dcd9dfc499492966c64dcf",
+        )
+
 def init():
     _init_http_repos()
     _init_local_repos()

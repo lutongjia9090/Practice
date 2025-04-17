@@ -9,6 +9,13 @@ load(
 )
 
 custom_cc_library(
+    name = "kv_common",
+    hdrs = [
+        "kv_common.h",
+    ],
+)
+
+custom_cc_library(
     name = "storage_engine",
     srcs = [
         "storage_engine.cc",

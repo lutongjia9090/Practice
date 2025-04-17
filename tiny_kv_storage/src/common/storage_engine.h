@@ -54,10 +54,10 @@ public:
   std::optional<std::string> Get(const std::string &key) override;
   bool Delete(const std::string &key) override;
   KVMap GetAllEntries() override;
+  bool Persist();
 
 private:
   bool Load();
-  bool Persist();
 
 private:
   std::mutex mutex_;
