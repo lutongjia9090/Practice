@@ -23,16 +23,15 @@ DEFINE_string(storage, "", "\"memory\" or \"file\"");
 DEFINE_string(storage_path, "", "only for file storage");
 
 void CheckArguments() {
-  KV_ASSERT(!FLAGS_ip.empty(), "`ip` should not be empty.");
-  KV_ASSERT(FLAGS_port != 0, "`port` should not be empty.");
+  KV_ASSERT(!FLAGS_ip.empty(), "`ip` must be specified.");
+  KV_ASSERT(FLAGS_port != 0, "`port` must be specified.");
   if (!FLAGS_storage.empty()) {
     KV_ASSERT(FLAGS_storage == "memory" || FLAGS_storage == "file",
               "`storage` must be either `memory` or `file`.");
   }
 
   if (FLAGS_storage == "file") {
-    KV_ASSERT(!FLAGS_storage_path.empty(),
-              "`storage_path` should not be empty.");
+    KV_ASSERT(!FLAGS_storage_path.empty(), "`storage_path` must be specified.");
   }
 }
 

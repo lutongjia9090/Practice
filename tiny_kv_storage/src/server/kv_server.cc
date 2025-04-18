@@ -132,12 +132,29 @@ void KVServer::AcceptConnections() {
 
 void KVServer::HandleClient(int client_socket) {
   char buffer[1024] = {0};
+  struct sockaddr_in peer_addr;
+  socklen_t addr_len = sizeof(peer_addr);
+
+  if (getpeername(client_socket, (struct sockaddr*)&peer_addr, &addr_len) == 0) {
+    printf("Client %d(%s:%d) connected and ready for requests\n",
+           client_socket, inet_ntoa(peer_addr.sin_addr), ntohs(peer_addr.sin_port));
+  }
 
   while (running_) {
     memset(buffer, 0, sizeof(buffer));
 
-    size_t bytes_read = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
+    ssize_t bytes_read = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
     if (bytes_read <= 0) {
+      if (bytes_read == 0) {
+        if (getpeername(client_socket, (struct sockaddr*)&peer_addr, &addr_len) == 0) {
+          printf("Client %d(%s:%d) disconnected normally\n",
+                 client_socket, inet_ntoa(peer_addr.sin_addr), ntohs(peer_addr.sin_port));
+        } else {
+          printf("Client %d disconnected normally\n", client_socket);
+        }
+      } else {
+        printf("Client %d connection error: %s\n", client_socket, strerror(errno));
+      }
       break;
     }
 
