@@ -23,8 +23,7 @@ class KVServer {
 public:
   KVServer(const std::string &ip, int port,
            const std::string &storage_type = "memory",
-           const std::string &storage_path = "", bool use_cache = false,
-           size_t cache_capacity = DEFAULT_CACHE_CAPACITY);
+           const std::string &storage_path = "");
 
   ~KVServer();
 

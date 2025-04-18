@@ -38,7 +38,6 @@ custom_cc_library(
     ],
     hdrs = [
         "storage_engine.h",
-        "cache.h",
     ],
 )
 

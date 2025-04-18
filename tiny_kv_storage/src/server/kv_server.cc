@@ -25,11 +25,9 @@ namespace tiny_kv {
 /************************************************************************/
 KVServer::KVServer(const std::string &ip, int port,
                    const std::string &storage_type,
-                   const std::string &storage_path, bool use_cache,
-                   size_t cache_capacity)
+                   const std::string &storage_path)
     : ip_(ip), port_(port), server_fd_(-1),
-      storage_(CreateStorageEngine(storage_type, storage_path, use_cache,
-                                   cache_capacity)),
+      storage_(CreateStorageEngine(storage_type, storage_path)),
       running_(false) {
   InitHandlers();
 }

@@ -21,8 +21,6 @@ DEFINE_string(ip, "", "ip adress");
 DEFINE_int32(port, 0, "port");
 DEFINE_string(storage, "", "\"memory\" or \"file\"");
 DEFINE_string(storage_path, "", "only for file storage");
-DEFINE_bool(enable_cache, false, "enable LRU cache");
-DEFINE_int32(cache_capacity, 1000, "cache capacity");
 
 void CheckArguments() {
   KV_ASSERT(!FLAGS_ip.empty(), "`ip` must be specified.");
@@ -34,10 +32,6 @@ void CheckArguments() {
 
   if (FLAGS_storage == "file") {
     KV_ASSERT(!FLAGS_storage_path.empty(), "`storage_path` must be specified.");
-  }
-
-  if (FLAGS_enable_cache) {
-    KV_ASSERT(FLAGS_cache_capacity >= 0, "`cache_capacity` must be >= 0.");
   }
 }
 
@@ -58,10 +52,8 @@ public:
   }
 
   bool Start(const std::string &ip, int port, const std::string &storage_type,
-             const std::string &storage_path, bool enable_cache,
-             int cache_capacity) {
-    server_ = std::make_unique<KVServer>(ip, port, storage_type, storage_path,
-                                         enable_cache, cache_capacity);
+             const std::string &storage_path) {
+    server_ = std::make_unique<KVServer>(ip, port, storage_type, storage_path);
 
     if (!server_->Start()) {
       printf("Failed to start server.\n");
@@ -154,8 +146,7 @@ int main(int argc, char **argv) {
 
   app.SetupSignalHandlers();
 
-  KV_ASSERT(app.Start(FLAGS_ip, FLAGS_port, FLAGS_storage, FLAGS_storage_path,
-                      FLAGS_enable_cache, FLAGS_cache_capacity),
+  KV_ASSERT(app.Start(FLAGS_ip, FLAGS_port, FLAGS_storage, FLAGS_storage_path),
             "Failed to start KV server.");
 
   app.Run();
