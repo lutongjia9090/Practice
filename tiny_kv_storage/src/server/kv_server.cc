@@ -3,7 +3,6 @@
 //
 
 #include "kv_server.h"
-#include "src/common/storage_engine.h"
 #include <arpa/inet.h>
 #include <asm-generic/socket.h>
 #include <cerrno>
@@ -13,7 +12,6 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-#include <thread>
 #include <unistd.h>
 
 namespace tiny_kv {
@@ -131,48 +129,80 @@ void KVServer::AcceptConnections() {
 }
 
 void KVServer::HandleClient(int client_socket) {
+  ClientInfo client = GetClientInfo(client_socket);
+  LogClientEvent(client, "connected and ready for requests");
+
   char buffer[1024] = {0};
-  struct sockaddr_in peer_addr;
-  socklen_t addr_len = sizeof(peer_addr);
+  bool session_active = true;
 
-  if (getpeername(client_socket, (struct sockaddr*)&peer_addr, &addr_len) == 0) {
-    printf("Client %d(%s:%d) connected and ready for requests\n",
-           client_socket, inet_ntoa(peer_addr.sin_addr), ntohs(peer_addr.sin_port));
-  }
-
-  while (running_) {
+  while (running_ && session_active) {
     memset(buffer, 0, sizeof(buffer));
-
     ssize_t bytes_read = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
+
     if (bytes_read <= 0) {
-      if (bytes_read == 0) {
-        if (getpeername(client_socket, (struct sockaddr*)&peer_addr, &addr_len) == 0) {
-          printf("Client %d(%s:%d) disconnected normally\n",
-                 client_socket, inet_ntoa(peer_addr.sin_addr), ntohs(peer_addr.sin_port));
-        } else {
-          printf("Client %d disconnected normally\n", client_socket);
-        }
-      } else {
-        printf("Client %d connection error: %s\n", client_socket, strerror(errno));
-      }
-      break;
+      HandleClientDisconnect(client, bytes_read);
+      session_active = false;
+      continue;
     }
 
-    Request req = ParseRequest(buffer);
-
-    Response resp;
-    auto it = handlers_.find(req.op);
-    if (it != handlers_.end()) {
-      resp = it->second(req);
-    } else {
-      resp = {false, "unsupport operation", ""};
-    }
-
-    std::string resp_str = SerializeResponse(resp);
-    send(client_socket, resp_str.c_str(), resp_str.length(), 0);
+    ProcessClientRequest(client, buffer);
   }
 
   close(client_socket);
+}
+
+KVServer::ClientInfo KVServer::GetClientInfo(int socket) {
+  ClientInfo info;
+  info.socket = socket;
+
+  struct sockaddr_in addr;
+  socklen_t addr_len = sizeof(addr);
+
+  if (getpeername(socket, (struct sockaddr *)&addr, &addr_len) == 0) {
+    info.ip = inet_ntoa(addr.sin_addr);
+    info.port = ntohs(addr.sin_port);
+    info.has_address = true;
+  } else {
+    info.has_address = false;
+  }
+
+  return info;
+}
+
+void KVServer::LogClientEvent(const ClientInfo &client,
+                              const std::string &event) {
+  if (client.has_address) {
+    printf("Client %d(%s:%d) %s\n", client.socket, client.ip.c_str(),
+           client.port, event.c_str());
+  } else {
+    printf("Client %d %s\n", client.socket, event.c_str());
+  }
+  fflush(stdout);
+}
+
+void KVServer::HandleClientDisconnect(const ClientInfo &client,
+                                      ssize_t status) {
+  if (status == 0) {
+    LogClientEvent(client, "disconnected normally");
+  } else {
+    LogClientEvent(client, std::string("connection error: ") + strerror(errno));
+  }
+}
+
+void KVServer::ProcessClientRequest(const ClientInfo &client,
+                                    const char *buffer) {
+  Request req = ParseRequest(buffer);
+
+  Response resp;
+  auto it = handlers_.find(req.op);
+  if (it != handlers_.end()) {
+    resp = it->second(req);
+  } else {
+    resp = {false, "unsupport operation", ""};
+  }
+
+  std::string resp_str = SerializeResponse(resp);
+  send(client.socket, resp_str.c_str(), resp_str.length(), 0);
 }
 
 Request KVServer::ParseRequest(const char *buffer) {
@@ -182,32 +212,36 @@ Request KVServer::ParseRequest(const char *buffer) {
     return {OperationType::Invalid, "", ""};
   }
 
-  OperationType op;
   std::string op_str = data.substr(0, pos);
-  if (op_str == "GET") {
-    op = OperationType::KGet;
-  } else if (op_str == "DEL") {
-    op = OperationType::KDelete;
-  } else if (op_str == "PUT") {
-    op = OperationType::KPut;
-  } else {
+
+  static const std::unordered_map<std::string, OperationType> op_map = {
+      {"GET", OperationType::KGet},
+      {"DEL", OperationType::KDelete},
+      {"PUT", OperationType::KPut}};
+
+  auto it = op_map.find(op_str);
+  if (it == op_map.end()) {
     return {OperationType::Invalid, "", ""};
   }
 
+  OperationType op = it->second;
   data = data.substr(pos + 1);
-  if (op == OperationType::KGet) {
+
+  switch (op) {
+  case OperationType::KGet:
+  case OperationType::KDelete:
     return {op, data, ""};
-  } else if (op == OperationType::KDelete) {
-    return {op, data, ""};
-  } else {
+
+  case OperationType::KPut: {
     pos = data.find(' ');
     if (pos == std::string::npos) {
       return {op, data, ""};
     }
+    return {op, data.substr(0, pos), data.substr(pos + 1)};
+  }
 
-    std::string key = data.substr(0, pos);
-    std::string value = data.substr(pos + 1);
-    return {op, key, value};
+  default:
+    return {OperationType::Invalid, "", ""};
   }
 }
 

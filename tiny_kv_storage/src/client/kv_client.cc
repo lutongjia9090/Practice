@@ -5,7 +5,6 @@
 #include "kv_client.h"
 #include <arpa/inet.h>
 #include <netinet/in.h>
-#include <string>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>

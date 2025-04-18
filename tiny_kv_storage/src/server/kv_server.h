@@ -31,6 +31,18 @@ public:
   void Stop();
 
 private:
+  struct ClientInfo {
+    int socket;
+    std::string ip;
+    int port;
+    bool has_address;
+  };
+
+  ClientInfo GetClientInfo(int socket);
+  void LogClientEvent(const ClientInfo &client, const std::string &event);
+  void HandleClientDisconnect(const ClientInfo &client, ssize_t status);
+  void ProcessClientRequest(const ClientInfo &client, const char *buffer);
+
   void InitHandlers();
   void AcceptConnections();
   void HandleClient(int client_socket);
