@@ -29,6 +29,7 @@ public:
 
   bool Start();
   void Stop();
+  std::unique_ptr<StorageEngine> &GetStorageForBenchmark();
 
 private:
   struct ClientInfo {

@@ -256,4 +256,8 @@ std::string KVServer::SerializeResponse(const Response &resp) {
   return result;
 }
 
+std::unique_ptr<StorageEngine> &KVServer::GetStorageForBenchmark() {
+  return storage_;
+}
+
 } // namespace tiny_kv

@@ -6,8 +6,6 @@
 #include <filesystem>
 #include <fstream>
 #include <ios>
-#include <mutex>
-#include <optional>
 
 namespace tiny_kv {
 
