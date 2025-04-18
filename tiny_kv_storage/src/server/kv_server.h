@@ -23,7 +23,8 @@ class KVServer {
 public:
   KVServer(const std::string &ip, int port,
            const std::string &storage_type = "memory",
-           const std::string &storage_path = "");
+           const std::string &storage_path = "", bool use_cache = false,
+           size_t cache_capacity = DEFAULT_CACHE_CAPACITY);
 
   ~KVServer();
 
@@ -33,20 +34,20 @@ public:
 
 private:
   struct ClientInfo {
-    int socket;
+    int fd;
     std::string ip;
     int port;
     bool has_address;
   };
 
-  ClientInfo GetClientInfo(int socket);
+  ClientInfo GetClientInfo(int fd);
   void LogClientEvent(const ClientInfo &client, const std::string &event);
   void HandleClientDisconnect(const ClientInfo &client, ssize_t status);
   void ProcessClientRequest(const ClientInfo &client, const char *buffer);
 
   void InitHandlers();
   void AcceptConnections();
-  void HandleClient(int client_socket);
+  void HandleClient(int client_fd);
   Request ParseRequest(const char *buffer);
   std::string SerializeResponse(const Response &resp);
 

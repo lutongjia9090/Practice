@@ -6,12 +6,16 @@
 #include <arpa/inet.h>
 #include <asm-generic/socket.h>
 #include <cerrno>
+#include <chrono>
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
+#include <fcntl.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <thread>
 #include <unistd.h>
 
 namespace tiny_kv {
@@ -21,9 +25,11 @@ namespace tiny_kv {
 /************************************************************************/
 KVServer::KVServer(const std::string &ip, int port,
                    const std::string &storage_type,
-                   const std::string &storage_path)
-    : ip_(ip), port_(port),
-      storage_(CreateStorageEngine(storage_type, storage_path)),
+                   const std::string &storage_path, bool use_cache,
+                   size_t cache_capacity)
+    : ip_(ip), port_(port), server_fd_(-1),
+      storage_(CreateStorageEngine(storage_type, storage_path, use_cache,
+                                   cache_capacity)),
       running_(false) {
   InitHandlers();
 }
@@ -35,7 +41,7 @@ bool KVServer::Start() {
     return true;
   }
 
-  server_fd_ = socket(AF_INET, SOCK_STREAM, 0);
+  server_fd_ = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
   if (server_fd_ < 0) {
     return false;
   }
@@ -75,7 +81,11 @@ void KVServer::Stop() {
   }
 
   running_ = false;
-  close(server_fd_);
+
+  if (server_fd_ >= 0) {
+    close(server_fd_);
+    server_fd_ = -1;
+  }
 
   if (accept_thread_.joinable()) {
     accept_thread_.join();
@@ -113,9 +123,19 @@ void KVServer::AcceptConnections() {
   socklen_t addr_len = sizeof(client_addr);
 
   while (running_) {
-    int client_socket =
-        accept(server_fd_, (struct sockaddr *)&client_addr, &addr_len);
-    if (client_socket < 0) {
+    int client_fd = accept4(server_fd_, (struct sockaddr *)&client_addr,
+                            &addr_len, SOCK_NONBLOCK);
+
+    if (client_fd < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        continue;
+      }
+
+      if (!running_) {
+        break;
+      }
+
       if (running_) {
         printf("Failed to accept: %s (error: %d)\n", strerror(errno), errno);
       }
@@ -123,13 +143,13 @@ void KVServer::AcceptConnections() {
       continue;
     }
 
-    std::thread client_thread(&KVServer::HandleClient, this, client_socket);
+    std::thread client_thread(&KVServer::HandleClient, this, client_fd);
     client_thread.detach();
   }
 }
 
-void KVServer::HandleClient(int client_socket) {
-  ClientInfo client = GetClientInfo(client_socket);
+void KVServer::HandleClient(int client_fd) {
+  ClientInfo client = GetClientInfo(client_fd);
   LogClientEvent(client, "connected and ready for requests");
 
   char buffer[1024] = {0};
@@ -137,7 +157,12 @@ void KVServer::HandleClient(int client_socket) {
 
   while (running_ && session_active) {
     memset(buffer, 0, sizeof(buffer));
-    ssize_t bytes_read = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
+    ssize_t bytes_read = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
+
+    if (bytes_read < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      continue;
+    }
 
     if (bytes_read <= 0) {
       HandleClientDisconnect(client, bytes_read);
@@ -148,17 +173,17 @@ void KVServer::HandleClient(int client_socket) {
     ProcessClientRequest(client, buffer);
   }
 
-  close(client_socket);
+  close(client_fd);
 }
 
-KVServer::ClientInfo KVServer::GetClientInfo(int socket) {
+KVServer::ClientInfo KVServer::GetClientInfo(int fd) {
   ClientInfo info;
-  info.socket = socket;
+  info.fd = fd;
 
   struct sockaddr_in addr;
   socklen_t addr_len = sizeof(addr);
 
-  if (getpeername(socket, (struct sockaddr *)&addr, &addr_len) == 0) {
+  if (getpeername(fd, (struct sockaddr *)&addr, &addr_len) == 0) {
     info.ip = inet_ntoa(addr.sin_addr);
     info.port = ntohs(addr.sin_port);
     info.has_address = true;
@@ -172,10 +197,10 @@ KVServer::ClientInfo KVServer::GetClientInfo(int socket) {
 void KVServer::LogClientEvent(const ClientInfo &client,
                               const std::string &event) {
   if (client.has_address) {
-    printf("Client %d(%s:%d) %s\n", client.socket, client.ip.c_str(),
-           client.port, event.c_str());
+    printf("Client %d(%s:%d) %s\n", client.fd, client.ip.c_str(), client.port,
+           event.c_str());
   } else {
-    printf("Client %d %s\n", client.socket, event.c_str());
+    printf("Client %d %s\n", client.fd, event.c_str());
   }
   fflush(stdout);
 }
@@ -202,7 +227,7 @@ void KVServer::ProcessClientRequest(const ClientInfo &client,
   }
 
   std::string resp_str = SerializeResponse(resp);
-  send(client.socket, resp_str.c_str(), resp_str.length(), 0);
+  send(client.fd, resp_str.c_str(), resp_str.length(), 0);
 }
 
 Request KVServer::ParseRequest(const char *buffer) {

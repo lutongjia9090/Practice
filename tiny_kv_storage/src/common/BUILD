@@ -16,25 +16,6 @@ custom_cc_library(
 )
 
 custom_cc_library(
-    name = "storage_engine",
-    srcs = [
-        "storage_engine.cc",
-    ],
-    hdrs = [
-        "storage_engine.h",
-    ],
-)
-
-custom_cc_test(
-    name = "storage_engine_test",
-    srcs = ["storage_engine_test.cc"],
-    deps = [
-        "storage_engine",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-custom_cc_library(
     name = "cache",
     hdrs = [
         "cache.h",
@@ -46,6 +27,26 @@ custom_cc_test(
     srcs = ["cache_test.cc"],
     deps = [
         "cache",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+custom_cc_library(
+    name = "storage_engine",
+    srcs = [
+        "storage_engine.cc",
+    ],
+    hdrs = [
+        "storage_engine.h",
+        "cache.h",
+    ],
+)
+
+custom_cc_test(
+    name = "storage_engine_test",
+    srcs = ["storage_engine_test.cc"],
+    deps = [
+        "storage_engine",
         "@com_google_googletest//:gtest_main",
     ],
 )
