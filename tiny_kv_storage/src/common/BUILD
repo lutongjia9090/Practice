@@ -33,3 +33,19 @@ custom_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+custom_cc_library(
+    name = "cache",
+    hdrs = [
+        "cache.h",
+    ],
+)
+
+custom_cc_test(
+    name = "cache_test",
+    srcs = ["cache_test.cc"],
+    deps = [
+        "cache",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
