@@ -17,23 +17,11 @@
 
 namespace tiny_kv {
 
-DEFINE_string(ip, "", "ip adress");
-DEFINE_int32(port, 0, "port");
-DEFINE_string(storage, "", "\"memory\" or \"file\"");
-DEFINE_string(storage_path, "", "only for file storage");
-
-void CheckArguments() {
-  KV_ASSERT(!FLAGS_ip.empty(), "`ip` must be specified.");
-  KV_ASSERT(FLAGS_port != 0, "`port` must be specified.");
-  if (!FLAGS_storage.empty()) {
-    KV_ASSERT(FLAGS_storage == "memory" || FLAGS_storage == "file",
-              "`storage` must be either `memory` or `file`.");
-  }
-
-  if (FLAGS_storage == "file") {
-    KV_ASSERT(!FLAGS_storage_path.empty(), "`storage_path` must be specified.");
-  }
-}
+DEFINE_string(ip, "127.0.0.1", "The server ip");
+DEFINE_int32(port, 8080, "The server port");
+DEFINE_string(storage_type, "memory", "Storage type: 'memory' or 'file'");
+DEFINE_string(storage_path, "test.db",
+              "Path to database file when using file storage");
 
 class KVServerApp;
 
@@ -140,14 +128,13 @@ int main(int argc, char **argv) {
 
   google::ParseCommandLineFlags(&argc, &argv, true);
 
-  CheckArguments();
-
   KVServerApp app;
 
   app.SetupSignalHandlers();
 
-  KV_ASSERT(app.Start(FLAGS_ip, FLAGS_port, FLAGS_storage, FLAGS_storage_path),
-            "Failed to start KV server.");
+  KV_ASSERT(
+      app.Start(FLAGS_ip, FLAGS_port, FLAGS_storage_type, FLAGS_storage_path),
+      "Failed to start KV server.");
 
   app.Run();
 

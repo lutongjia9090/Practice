@@ -2,26 +2,23 @@
 // Author: Tongjia Lu (tobijah@163.com)
 //
 
-#include "kv_client.h"
-#include "src/common/kv_common.h"
-#include <cstdio>
+#include "grpc_kv_client.h"
 #include <gflags/gflags.h>
-#include <iostream>
-#include <memory>
 #include <sstream>
+#include <stdio.h>
 #include <string>
 #include <unordered_map>
 
-namespace tiny_kv {
+DEFINE_string(server, "127.0.0.1:8080",
+              "The server address in the format of host:port");
 
-DEFINE_string(server_ip, "127.0.0.1", "The server ip address");
-DEFINE_int32(server_port, 8080, "The server port");
+namespace tiny_kv {
 
 const char *kUsageMessage = R"(
 Supported Client Commands:
   get <key>          Get the value of a key
   put <key> <value>  Set a key-value pair
-  del <key>          Delete a key-value pair
+  delete <key>       Delete a key-value pair
   exit               Exit the client
 )";
 
@@ -30,7 +27,7 @@ Supported Client Commands:
 /************************************************************************/
 class CommandProcessor {
 public:
-  explicit CommandProcessor(KVClient *client) : client_(client) {
+  explicit CommandProcessor(GrpcKVClient *client) : client_(client) {
     InitCommandHandlers();
   }
 
@@ -75,7 +72,7 @@ private:
   void InitCommandHandlers() {
     command_handlers_["get"] = &CommandProcessor::HandleGetCommand;
     command_handlers_["put"] = &CommandProcessor::HandlePutCommand;
-    command_handlers_["del"] = &CommandProcessor::HandleDelCommand;
+    command_handlers_["delete"] = &CommandProcessor::HandleDeleteCommand;
   }
 
   void HandleGetCommand(std::istringstream &iss) {
@@ -89,36 +86,35 @@ private:
     if (success) {
       printf("(value) %s\n", value.c_str());
     } else {
-      printf("(error) %s\n", value.c_str());
+      printf("(error) %s\n", client_->GetLastError().c_str());
     }
   }
 
   void HandlePutCommand(std::istringstream &iss) {
-    std::string key;
-    std::string value;
+    std::string key, value;
     if (!(iss >> key) || !(iss >> value)) {
       PrintUsage("put");
       return;
     }
 
-    if (!client_->Put(key, value)) {
-      printf("(error) %s\n", client_->GetLastError().c_str());
-    } else {
+    if (client_->Put(key, value)) {
       printf("OK\n");
+    } else {
+      printf("(error) %s\n", client_->GetLastError().c_str());
     }
   }
 
-  void HandleDelCommand(std::istringstream &iss) {
+  void HandleDeleteCommand(std::istringstream &iss) {
     std::string key;
     if (!(iss >> key)) {
-      PrintUsage("del");
+      PrintUsage("delete");
       return;
     }
 
-    if (!client_->Delete(key)) {
-      printf("(error) %s\n", client_->GetLastError().c_str());
-    } else {
+    if (client_->Delete(key)) {
       printf("OK\n");
+    } else {
+      printf("(error) %s\n", client_->GetLastError().c_str());
     }
   }
 
@@ -126,7 +122,7 @@ private:
     static const std::unordered_map<std::string, std::string> usage_map = {
         {"get", "Usage: get <key>"},
         {"put", "Usage: put <key> <value>"},
-        {"del", "Usage: del <key>"}};
+        {"delete", "Usage: delete <key>"}};
 
     auto it = usage_map.find(cmd);
     if (it != usage_map.end()) {
@@ -135,31 +131,33 @@ private:
   }
 
 private:
-  KVClient *client_;
+  GrpcKVClient *client_;
   std::unordered_map<std::string, CommandHandler> command_handlers_;
 };
 
-int main(int argc, char **argv) {
-  gflags::SetUsageMessage(kUsageMessage);
+} // namespace tiny_kv
 
+int main(int argc, char *argv[]) {
+  gflags::SetUsageMessage(tiny_kv::kUsageMessage);
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
-  gflags::ShowUsageWithFlagsRestrict(argv[0], "src/client/main");
+  tiny_kv::GrpcKVClient client(FLAGS_server);
 
-  auto client =
-      std::make_unique<tiny_kv::KVClient>(FLAGS_server_ip, FLAGS_server_port);
-  if (!client->Connect()) {
-    printf("Error: %s", client->GetLastError().c_str());
+  if (!client.Connect()) {
+    printf("Error: Failed to connect to server: %s\n",
+           client.GetLastError().c_str());
     return 1;
   }
 
-  CommandProcessor processor(client.get());
+  printf("Connected to %s\n", FLAGS_server.c_str());
+  printf("Type 'exit' to quit\n");
+
+  tiny_kv::CommandProcessor processor(&client);
   processor.RunInteractive();
 
-  gflags::ShutDownCommandLineFlags();
+  client.Shutdown();
+
+  google::ShutDownCommandLineFlags();
+
   return 0;
 }
-
-} // namespace tiny_kv
-
-int main(int argc, char **argv) { return tiny_kv::main(argc, argv); }

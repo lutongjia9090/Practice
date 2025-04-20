@@ -1,0 +1,216 @@
+diff --git a/BUILD b/BUILD
+index 7671c8f..c9ae6d5 100644
+--- a/BUILD
++++ b/BUILD
+@@ -138,6 +138,11 @@ config_setting(
+     values = {"cpu": "darwin"},
+ )
+ 
++config_setting(
++    name = "mac_arm64",
++    values = {"cpu": "darwin_arm64"},
++)
++
+ config_setting(
+     name = "use_strict_warning",
+     values = {"define": "use_strict_warning=true"},
+diff --git a/bazel/copts.bzl b/bazel/copts.bzl
+index f63e39e..d826c1b 100644
+--- a/bazel/copts.bzl
++++ b/bazel/copts.bzl
+@@ -16,47 +16,6 @@
+ Includes default copts.
+ """
+ 
+-# This is a list of llvm flags to be used when being built with use_strict_warning=1
+-GRPC_LLVM_WARNING_FLAGS = [
+-    # Enable all & extra warnings
+-    "-Wall",
+-    "-Wextra",
+-    # Avoid some known traps
+-    "-Wimplicit-fallthrough",
+-    # Consider warnings as errors
+-    "-Werror",
+-    # Ignore unknown warning flags
+-    "-Wno-unknown-warning-option",
+-    # A list of enabled flags coming from internal build system
+-    "-Wc++20-extensions",
+-    "-Wctad-maybe-unsupported",
+-    "-Wdeprecated-increment-bool",
+-    "-Wfloat-overflow-conversion",
+-    "-Wfloat-zero-conversion",
+-    "-Wfor-loop-analysis",
+-    "-Wformat-security",
+-    "-Wgnu-redeclared-enum",
+-    "-Winfinite-recursion",
+-    "-Wliteral-conversion",
+-    "-Wnon-virtual-dtor",
+-    "-Woverloaded-virtual",
+-    "-Wself-assign",
+-    "-Wstring-conversion",
+-    "-Wtautological-overlap-compare",
+-    "-Wthread-safety-analysis",
+-    "-Wthread-safety-beta",
+-    "-Wunused-comparison",
+-    "-Wvla",
+-    # -Wextra compatibility between gcc and clang
+-    "-Wtype-limits",
+-    # A list of disabled flags coming from internal build system
+-    "-Wno-string-concatenation",
+-    # Exceptions but will be removed
+-    "-Wno-deprecated-declarations",
+-    "-Wno-unused-function",
++GRPC_DEFAULT_COPTS = [
++    "-w",
+ ]
+-
+-GRPC_DEFAULT_COPTS = select({
+-    "//:use_strict_warning": GRPC_LLVM_WARNING_FLAGS,
+-    "//conditions:default": [],
+-})
+diff --git a/bazel/grpc_build_system.bzl b/bazel/grpc_build_system.bzl
+index 3b7c237..d417b9b 100644
+--- a/bazel/grpc_build_system.bzl
++++ b/bazel/grpc_build_system.bzl
+@@ -53,6 +53,7 @@ def if_windows(a):
+ def if_mac(a):
+     return select({
+         "//:mac_x86_64": a,
++        "//:mac_arm64": a,
+         "//conditions:default": [],
+     })
+ 
+@@ -159,10 +160,11 @@ def grpc_cc_library(
+     if use_cfstream:
+         copts = if_mac(["-DGRPC_CFSTREAM"])
+     if language.upper() == "C":
+-        copts = copts + if_not_windows(["-std=c99"])
++        copts = copts + if_not_windows(["-std=c11"])
+     linkopts = if_not_windows(["-pthread"]) + if_windows(["-defaultlib:ws2_32.lib"])
+     if use_cfstream:
+         linkopts = linkopts + if_mac(["-framework CoreFoundation"])
++    linkopts = linkopts + if_mac(["-lresolv"])
+ 
+     if select_deps:
+         for select_deps_entry in select_deps:
+@@ -297,7 +299,7 @@ def grpc_cc_test(name, srcs = [], deps = [], external_deps = [], args = [], data
+     """
+     copts = copts + if_mac(["-DGRPC_CFSTREAM"])
+     if language.upper() == "C":
+-        copts = copts + if_not_windows(["-std=c99"])
++        copts = copts + if_not_windows(["-std=c11"])
+ 
+     # NOTE: these attributes won't be used for the poller-specific versions of a test
+     # automatically, you need to set them explicitly (if applicable)
+@@ -376,7 +378,7 @@ def grpc_cc_binary(name, srcs = [], deps = [], external_deps = [], args = [], da
+     """
+     copts = []
+     if language.upper() == "C":
+-        copts = ["-std=c99"]
++        copts = ["-std=c11"]
+     native.cc_binary(
+         name = name,
+         srcs = srcs,
+diff --git a/src/core/lib/gpr/cpu_linux.cc b/src/core/lib/gpr/cpu_linux.cc
+index 2e16e3d..34a1cc5 100644
+--- a/src/core/lib/gpr/cpu_linux.cc
++++ b/src/core/lib/gpr/cpu_linux.cc
+@@ -26,6 +26,7 @@
+ 
+ #include <errno.h>
+ #include <sched.h>
++#include <stdlib.h>
+ #include <string.h>
+ #include <unistd.h>
+ 
+@@ -36,6 +37,18 @@
+ static int ncpus = 0;
+ 
+ static void init_num_cpus() {
++  // NOTE: in vipshop containers, CONTAINER_CORE_LIMIT is
++  // treated as if it is the real number of CPUs.
++  char* container_core_limit = getenv("CONTAINER_CORE_LIMIT");
++  if (container_core_limit) {
++    gpr_log(GPR_INFO, "CONTAINER_CORE_LIMIT=%s", container_core_limit);
++    ncpus = atoi(container_core_limit);
++    if (ncpus < 1) {
++      ncpus = 1;
++    }
++    return;
++  }
++
+ #ifndef GPR_MUSL_LIBC_COMPAT
+   if (sched_getcpu() < 0) {
+     gpr_log(GPR_ERROR, "Error determining current CPU: %s\n", strerror(errno));
+diff --git a/src/core/lib/iomgr/executor.cc b/src/core/lib/iomgr/executor.cc
+index b8986d9..2a10a32 100644
+--- a/src/core/lib/iomgr/executor.cc
++++ b/src/core/lib/iomgr/executor.cc
+@@ -20,6 +20,7 @@
+ 
+ #include "src/core/lib/iomgr/executor.h"
+ 
++#include <stdlib.h>
+ #include <string.h>
+ 
+ #include <grpc/support/alloc.h>
+@@ -91,7 +92,17 @@ TraceFlag executor_trace(false, "executor");
+ Executor::Executor(const char* name) : name_(name) {
+   adding_thread_lock_ = GPR_SPINLOCK_STATIC_INITIALIZER;
+   gpr_atm_rel_store(&num_threads_, 0);
+-  max_threads_ = std::max(1u, 2 * gpr_cpu_num_cores());
++  char* grpc_max_executor_threads = getenv("GRPC_MAX_EXECUTOR_THREADS");
++  if (grpc_max_executor_threads) {
++    gpr_log(GPR_INFO, "GRPC_MAX_EXECUTOR_THREADS=%s",
++            grpc_max_executor_threads);
++    max_threads_ = atoi(grpc_max_executor_threads);
++    if (max_threads_ < 2) {
++      max_threads_ = 2;
++    }
++  } else {
++    max_threads_ = std::max(1u, 2 * gpr_cpu_num_cores());
++  }
+ }
+ 
+ void Executor::Init() { SetThreading(true); }
+diff --git a/third_party/address_sorting/BUILD b/third_party/address_sorting/BUILD
+index a835739..004de6b 100644
+--- a/third_party/address_sorting/BUILD
++++ b/third_party/address_sorting/BUILD
+@@ -53,7 +53,7 @@ address_sorting_cc_library(
+         "address_sorting_internal.h",
+         "include/address_sorting/address_sorting.h",
+     ],
+-    copts = ["-std=c99"],
++    copts = ["-std=c11"],
+     includes = [
+         "include",
+     ],
+diff --git a/third_party/libuv.BUILD b/third_party/libuv.BUILD
+index 84bfca8..86fbc1e 100644
+--- a/third_party/libuv.BUILD
++++ b/third_party/libuv.BUILD
+@@ -318,7 +318,9 @@ cc_library(
+             "-Wl,User32.lib",
+             "-Wl,Userenv.lib",
+         ],
+-        "//conditions:default": [],
++        "//conditions:default": [
++            "-ldl",
++        ],
+     }),
+     visibility = [
+         "//visibility:public",
+diff --git a/third_party/upb/bazel/build_defs.bzl b/third_party/upb/bazel/build_defs.bzl
+index 5b35b27..68913a8 100644
+--- a/third_party/upb/bazel/build_defs.bzl
++++ b/third_party/upb/bazel/build_defs.bzl
+@@ -44,7 +44,7 @@ UPB_DEFAULT_COPTS = select({
+     "//:fasttable_enabled_setting": ["-std=gnu99", "-DUPB_ENABLE_FASTTABLE"],
+     "//conditions:default": [
+         # copybara:strip_for_google3_begin
+-        "-std=c99",
++        "-std=c11",
+         "-pedantic",
+         "-Werror=pedantic",
+         "-Wall",
