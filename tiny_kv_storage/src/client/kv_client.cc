@@ -8,6 +8,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <sstream>
 
 namespace tiny_kv {
 
@@ -135,6 +136,67 @@ std::pair<bool, std::string> KVClient::ExecuteCmd(const std::string &command,
   std::string request = command + " " + key;
   if (!value.empty()) {
     request += " " + value;
+  }
+
+  if (!SendRequest(request)) {
+    return {false, last_error_};
+  }
+
+  std::string response;
+  if (!ReceiveResponse(response)) {
+    return {false, last_error_};
+  }
+
+  return ParseResponse(response);
+}
+
+std::unordered_map<std::string, std::string> KVClient::MultiGet(const std::vector<std::string> &keys) {
+  auto [success, response] = ExecuteMultiCmd("MGET", keys);
+  std::unordered_map<std::string, std::string> result;
+
+  if (success) {
+    std::istringstream iss(response);
+    std::string key, value;
+    while (iss >> key >> value) {
+      result[key] = value;
+    }
+  }
+
+  return result;
+}
+
+bool KVClient::MultiPut(const std::unordered_map<std::string, std::string> &kv_pairs) {
+  std::vector<std::string> keys;
+  for (const auto &[key, _] : kv_pairs) {
+    keys.push_back(key);
+  }
+  auto [success, _] = ExecuteMultiCmd("MPUT", keys, kv_pairs);
+  return success;
+}
+
+bool KVClient::MultiDelete(const std::vector<std::string> &keys) {
+  auto [success, _] = ExecuteMultiCmd("MDEL", keys);
+  return success;
+}
+
+std::pair<bool, std::string> KVClient::ExecuteMultiCmd(
+    const std::string &command,
+    const std::vector<std::string> &keys,
+    const std::unordered_map<std::string, std::string> &values) {
+  if (!EnsureConnect()) {
+    return {false, last_error_};
+  }
+
+  std::string request = command;
+
+  if (command == "MPUT") {
+    for (const auto &key : keys) {
+      request += " " + key + " " + values.at(key);
+    }
+  } else {
+    for (const auto &key : keys) {
+      request += " " + key;
+    }
   }
 
   if (!SendRequest(request)) {

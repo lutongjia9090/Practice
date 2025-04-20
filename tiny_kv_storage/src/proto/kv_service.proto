@@ -6,6 +6,11 @@ syntax = "proto3";
 
 package tiny_kv;
 
+message KeyValue {
+  string key = 1;
+  string value = 2;
+}
+
 message GetRequest {
   string key = 1;
 }
@@ -35,10 +40,44 @@ message DeleteResponse {
   string message = 2;
 }
 
+message MultiGetRequest {
+  repeated string keys = 1;
+}
+
+message MultiGetResponse {
+  bool success = 1;
+  string message = 2;
+  repeated KeyValue kvs = 3;
+}
+
+message MultiPutRequest {
+  repeated KeyValue kvs = 1;
+}
+
+message MultiPutResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message MultiDeleteRequest {
+  repeated string keys = 1;
+}
+
+message MultiDeleteResponse {
+  bool success = 1;
+  string message = 2;
+}
+
 service KVService {
   rpc Get(GetRequest) returns (GetResponse) {}
 
   rpc Put(PutRequest) returns (PutResponse) {}
 
   rpc Delete(DeleteRequest) returns (DeleteResponse) {}
+
+  rpc MultiGet(MultiGetRequest) returns (MultiGetResponse) {}
+
+  rpc MultiPut(MultiPutRequest) returns (MultiPutResponse) {}
+
+  rpc MultiDelete(MultiDeleteRequest) returns (MultiDeleteResponse) {}
 }

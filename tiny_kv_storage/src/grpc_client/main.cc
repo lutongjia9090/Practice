@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 DEFINE_string(server, "127.0.0.1:8080",
               "The server address in the format of host:port");
@@ -16,10 +17,13 @@ namespace tiny_kv {
 
 const char *kUsageMessage = R"(
 Supported Client Commands:
-  get <key>          Get the value of a key
-  put <key> <value>  Set a key-value pair
-  delete <key>       Delete a key-value pair
-  exit               Exit the client
+  get <key>                   Get the value of a key
+  put <key> <value>           Set a key-value pair
+  delete <key>                Delete a key-value pair
+  mget <key1> <key2> ...      Get multiple keys
+  mput <key1> <value1> <key2> <value2> ...  Set multiple key-value pairs
+  mdel <key1> <key2> ...      Delete multiple keys
+  exit                        Exit the client
 )";
 
 /************************************************************************/
@@ -73,6 +77,9 @@ private:
     command_handlers_["get"] = &CommandProcessor::HandleGetCommand;
     command_handlers_["put"] = &CommandProcessor::HandlePutCommand;
     command_handlers_["delete"] = &CommandProcessor::HandleDeleteCommand;
+    command_handlers_["mget"] = &CommandProcessor::HandleMultiGetCommand;
+    command_handlers_["mput"] = &CommandProcessor::HandleMultiPutCommand;
+    command_handlers_["mdel"] = &CommandProcessor::HandleMultiDeleteCommand;
   }
 
   void HandleGetCommand(std::istringstream &iss) {
@@ -118,11 +125,78 @@ private:
     }
   }
 
+  void HandleMultiGetCommand(std::istringstream &iss) {
+    std::vector<std::string> keys;
+    std::string key;
+
+    while (iss >> key) {
+      keys.push_back(key);
+    }
+
+    if (keys.empty()) {
+      PrintUsage("mget");
+      return;
+    }
+
+    auto result = client_->MultiGet(keys);
+    if (result.empty()) {
+      printf("(empty result or error: %s)\n", client_->GetLastError().c_str());
+    } else {
+      for (const auto &[key, value] : result) {
+        printf("%s: %s\n", key.c_str(), value.c_str());
+      }
+    }
+  }
+
+  void HandleMultiPutCommand(std::istringstream &iss) {
+    std::unordered_map<std::string, std::string> kv_pairs;
+    std::string key, value;
+
+    while (iss >> key >> value) {
+      kv_pairs[key] = value;
+    }
+
+    if (kv_pairs.empty()) {
+      PrintUsage("mput");
+      return;
+    }
+
+    if (client_->MultiPut(kv_pairs)) {
+      printf("OK\n");
+    } else {
+      printf("(error) %s\n", client_->GetLastError().c_str());
+    }
+  }
+
+  void HandleMultiDeleteCommand(std::istringstream &iss) {
+    std::vector<std::string> keys;
+    std::string key;
+
+    while (iss >> key) {
+      keys.push_back(key);
+    }
+
+    if (keys.empty()) {
+      PrintUsage("mdel");
+      return;
+    }
+
+    if (client_->MultiDelete(keys)) {
+      printf("OK\n");
+    } else {
+      printf("(error) %s\n", client_->GetLastError().c_str());
+    }
+  }
+
   void PrintUsage(const std::string &cmd) {
     static const std::unordered_map<std::string, std::string> usage_map = {
-        {"get", "Usage: get <key>"},
-        {"put", "Usage: put <key> <value>"},
-        {"delete", "Usage: delete <key>"}};
+      {"get", "Usage: get <key>"},
+      {"put", "Usage: put <key> <value>"},
+      {"delete", "Usage: delete <key>"},
+      {"mget", "Usage: mget <key1> <key2> ..."},
+      {"mput", "Usage: mput <key1> <value1> <key2> <value2> ..."},
+      {"mdel", "Usage: mdel <key1> <key2> ..."}
+    };
 
     auto it = usage_map.find(cmd);
     if (it != usage_map.end()) {

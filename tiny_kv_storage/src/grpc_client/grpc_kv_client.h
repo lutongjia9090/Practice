@@ -9,6 +9,8 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
+#include <unordered_map>
 
 namespace tiny_kv {
 
@@ -27,6 +29,10 @@ public:
   std::pair<bool, std::string> Get(const std::string &key);
   bool Put(const std::string &key, const std::string &value);
   bool Delete(const std::string &key);
+
+  std::unordered_map<std::string, std::string> MultiGet(const std::vector<std::string> &keys);
+  bool MultiPut(const std::unordered_map<std::string, std::string> &kv_pairs);
+  bool MultiDelete(const std::vector<std::string> &keys);
 
   std::string GetLastError() const;
 

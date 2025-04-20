@@ -6,7 +6,6 @@
 #include <arpa/inet.h>
 #include <asm-generic/socket.h>
 #include <cerrno>
-#include <chrono>
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
@@ -98,21 +97,61 @@ void KVServer::Stop() {
 void KVServer::InitHandlers() {
   handlers_[OperationType::KPut] = [this](const Request &req) -> Response {
     bool success = storage_->Put(req.key, req.value);
-    return {success, success ? "success" : "fail", ""};
+    return {success, success ? "success" : "fail", "", {}};
   };
 
   handlers_[OperationType::KGet] = [this](const Request &req) -> Response {
     auto value = storage_->Get(req.key);
     if (value.has_value()) {
-      return {true, "success", *value};
+      return {true, "success", *value, {}};
     } else {
-      return {false, "key not found", ""};
+      return {false, "key not found", "", {}};
     }
   };
 
   handlers_[OperationType::KDelete] = [this](const Request &req) -> Response {
     bool success = storage_->Delete(req.key);
-    return {success, success ? "success" : "fail", ""};
+    return {success, success ? "success" : "fail", "", {}};
+  };
+
+  handlers_[OperationType::KMultiGet] = [this](const Request &req) -> Response {
+    Response resp{true, "success", "", {}};
+    resp.kvs.reserve(req.kvs.size());
+
+    for (const auto& kv : req.kvs) {
+      auto value = storage_->Get(kv.key);
+      if (value.has_value()) {
+        resp.kvs.push_back({kv.key, *value});
+      } else {
+        resp.kvs.push_back({kv.key, ""});
+      }
+    }
+
+    return resp;
+  };
+
+  handlers_[OperationType::KMultiPut] = [this](const Request &req) -> Response {
+    bool success = true;
+
+    for (const auto& kv : req.kvs) {
+      if (!storage_->Put(kv.key, kv.value)) {
+        success = false;
+      }
+    }
+
+    return {success, success ? "success" : "fail", "", {}};
+  };
+
+  handlers_[OperationType::KMultiDelete] = [this](const Request &req) -> Response {
+    bool success = true;
+
+    for (const auto& kv : req.kvs) {
+      if (!storage_->Delete(kv.key)) {
+        success = false;
+      }
+    }
+
+    return {success, success ? "success" : "fail", "", {}};
   };
 }
 
@@ -221,7 +260,7 @@ void KVServer::ProcessClientRequest(const ClientInfo &client,
   if (it != handlers_.end()) {
     resp = it->second(req);
   } else {
-    resp = {false, "unsupport operation", ""};
+    resp = {false, "unsupport operation", "", {}};
   }
 
   std::string resp_str = SerializeResponse(resp);
@@ -232,7 +271,7 @@ Request KVServer::ParseRequest(const char *buffer) {
   std::string data(buffer);
   size_t pos = data.find(' ');
   if (pos == std::string::npos) {
-    return {OperationType::Invalid, "", ""};
+    return {OperationType::Invalid, "", "", {}};
   }
 
   std::string op_str = data.substr(0, pos);
@@ -240,11 +279,14 @@ Request KVServer::ParseRequest(const char *buffer) {
   static const std::unordered_map<std::string, OperationType> op_map = {
       {"GET", OperationType::KGet},
       {"DEL", OperationType::KDelete},
-      {"PUT", OperationType::KPut}};
+      {"PUT", OperationType::KPut},
+      {"MGET", OperationType::KMultiGet},
+      {"MPUT", OperationType::KMultiPut},
+      {"MDEL", OperationType::KMultiDelete}};
 
   auto it = op_map.find(op_str);
   if (it == op_map.end()) {
-    return {OperationType::Invalid, "", ""};
+    return {OperationType::Invalid, "", "", {}};
   }
 
   OperationType op = it->second;
@@ -253,18 +295,67 @@ Request KVServer::ParseRequest(const char *buffer) {
   switch (op) {
   case OperationType::KGet:
   case OperationType::KDelete:
-    return {op, data, ""};
+    return {op, data, "", {}};
 
   case OperationType::KPut: {
     pos = data.find(' ');
     if (pos == std::string::npos) {
-      return {op, data, ""};
+      return {op, data, "", {}};
     }
-    return {op, data.substr(0, pos), data.substr(pos + 1)};
+    return {op, data.substr(0, pos), data.substr(pos + 1), {}};
+  }
+
+  case OperationType::KMultiGet:
+  case OperationType::KMultiDelete: {
+    Request req{op, "", "", {}};
+    size_t start = 0;
+    while (start < data.length()) {
+      pos = data.find(' ', start);
+      std::string key;
+      if (pos == std::string::npos) {
+        key = data.substr(start);
+        start = data.length();
+      } else {
+        key = data.substr(start, pos - start);
+        start = pos + 1;
+      }
+      if (!key.empty()) {
+        req.kvs.push_back({key, ""});
+      }
+    }
+    return req;
+  }
+
+  case OperationType::KMultiPut: {
+    Request req{op, "", "", {}};
+    size_t start = 0;
+    while (start < data.length()) {
+      size_t key_end = data.find(' ', start);
+      if (key_end == std::string::npos) {
+        break;
+      }
+      std::string key = data.substr(start, key_end - start);
+      start = key_end + 1;
+
+      size_t value_end = data.find(' ', start);
+      std::string value;
+      if (value_end == std::string::npos) {
+        value = data.substr(start);
+        start = data.length();
+      } else {
+        value = data.substr(start, value_end - start);
+        start = value_end + 1;
+      }
+
+      if (!key.empty()) {
+        req.kvs.push_back({key, value});
+      }
+    }
+    return req;
   }
 
   default:
-    return {OperationType::Invalid, "", ""};
+    return {OperationType::Invalid, "", "", {}};
   }
 }
 
@@ -274,6 +365,12 @@ std::string KVServer::SerializeResponse(const Response &resp) {
 
   if (!resp.value.empty()) {
     result += " " + resp.value;
+  }
+
+  if (!resp.kvs.empty()) {
+    for (const auto& kv : resp.kvs) {
+      result += " " + kv.key + " " + kv.value;
+    }
   }
 
   return result;

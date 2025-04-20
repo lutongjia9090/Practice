@@ -124,6 +124,101 @@ bool GrpcKVClient::Delete(const std::string &key) {
   return true;
 }
 
+std::unordered_map<std::string, std::string> GrpcKVClient::MultiGet(const std::vector<std::string> &keys) {
+  std::unordered_map<std::string, std::string> result;
+
+  if (!connected_) {
+    last_error_ = "Not connected to server";
+    return result;
+  }
+
+  MultiGetRequest request;
+  for (const auto& key : keys) {
+    request.add_keys(key);
+  }
+
+  MultiGetResponse response;
+  grpc::ClientContext context;
+
+  grpc::Status status = stub_->MultiGet(&context, request, &response);
+
+  if (!status.ok()) {
+    last_error_ = "RPC failed: " + status.error_message();
+    return result;
+  }
+
+  if (!response.success()) {
+    last_error_ = response.message();
+    return result;
+  }
+
+  for (const auto& kv : response.kvs()) {
+    result[kv.key()] = kv.value();
+  }
+
+  return result;
+}
+
+bool GrpcKVClient::MultiPut(const std::unordered_map<std::string, std::string> &kv_pairs) {
+  if (!connected_) {
+    last_error_ = "Not connected to server";
+    return false;
+  }
+
+  MultiPutRequest request;
+  for (const auto& [key, value] : kv_pairs) {
+    auto* kv = request.add_kvs();
+    kv->set_key(key);
+    kv->set_value(value);
+  }
+
+  MultiPutResponse response;
+  grpc::ClientContext context;
+
+  grpc::Status status = stub_->MultiPut(&context, request, &response);
+
+  if (!status.ok()) {
+    last_error_ = "RPC failed: " + status.error_message();
+    return false;
+  }
+
+  if (!response.success()) {
+    last_error_ = response.message();
+    return false;
+  }
+
+  return true;
+}
+
+bool GrpcKVClient::MultiDelete(const std::vector<std::string> &keys) {
+  if (!connected_) {
+    last_error_ = "Not connected to server";
+    return false;
+  }
+
+  MultiDeleteRequest request;
+  for (const auto& key : keys) {
+    request.add_keys(key);
+  }
+
+  MultiDeleteResponse response;
+  grpc::ClientContext context;
+
+  grpc::Status status = stub_->MultiDelete(&context, request, &response);
+
+  if (!status.ok()) {
+    last_error_ = "RPC failed: " + status.error_message();
+    return false;
+  }
+
+  if (!response.success()) {
+    last_error_ = response.message();
+    return false;
+  }
+
+  return true;
+}
+
 std::string GrpcKVClient::GetLastError() const { return last_error_; }
 
 } // namespace tiny_kv

@@ -127,6 +127,135 @@ void DeleteServiceContext::Recycle() {
 }
 
 /************************************************************************/
+/* MultiGetServiceContext */
+/************************************************************************/
+MultiGetServiceContext::MultiGetServiceContext(std::unique_ptr<StorageEngine> &storage)
+    : BaseServiceContext<MultiGetRequest, MultiGetResponse>(storage) {}
+
+void MultiGetServiceContext::DoRequest(grpc::ServerCompletionQueue *cq) {
+  cq_ = cq;
+  service_->RequestMultiGet(&ctx_, &request_, &responder_, cq, cq, this);
+}
+
+void MultiGetServiceContext::Process() {
+  if (status_ == Status::CREATE) {
+    auto *new_context = new MultiGetServiceContext(storage_);
+    new_context->set_service(service_);
+    new_context->DoRequest(cq_);
+
+    status_ = Status::PROCESS;
+
+    response_.set_success(true);
+    response_.set_message("success");
+
+    for (const auto& key : request_.keys()) {
+      auto value = storage_->Get(key);
+      auto* kv = response_.add_kvs();
+      kv->set_key(key);
+      kv->set_value(value.has_value() ? *value : "");
+    }
+
+    responder_.Finish(response_, grpc::Status::OK, this);
+
+  } else if (status_ == Status::PROCESS) {
+    status_ = Status::FINISH;
+    Recycle();
+  }
+}
+
+void MultiGetServiceContext::Recycle() {
+  if (status_ == Status::FINISH) {
+    delete this;
+  }
+}
+
+/************************************************************************/
+/* MultiPutServiceContext */
+/************************************************************************/
+MultiPutServiceContext::MultiPutServiceContext(std::unique_ptr<StorageEngine> &storage)
+    : BaseServiceContext<MultiPutRequest, MultiPutResponse>(storage) {}
+
+void MultiPutServiceContext::DoRequest(grpc::ServerCompletionQueue *cq) {
+  cq_ = cq;
+  service_->RequestMultiPut(&ctx_, &request_, &responder_, cq, cq, this);
+}
+
+void MultiPutServiceContext::Process() {
+  if (status_ == Status::CREATE) {
+    auto *new_context = new MultiPutServiceContext(storage_);
+    new_context->set_service(service_);
+    new_context->DoRequest(cq_);
+
+    status_ = Status::PROCESS;
+
+    bool success = true;
+    for (const auto& kv : request_.kvs()) {
+      if (!storage_->Put(kv.key(), kv.value())) {
+        success = false;
+      }
+    }
+
+    response_.set_success(success);
+    response_.set_message(success ? "success" : "partial failure");
+
+    responder_.Finish(response_, grpc::Status::OK, this);
+
+  } else if (status_ == Status::PROCESS) {
+    status_ = Status::FINISH;
+    Recycle();
+  }
+}
+
+void MultiPutServiceContext::Recycle() {
+  if (status_ == Status::FINISH) {
+    delete this;
+  }
+}
+
+/************************************************************************/
+/* MultiDeleteServiceContext */
+/************************************************************************/
+MultiDeleteServiceContext::MultiDeleteServiceContext(std::unique_ptr<StorageEngine> &storage)
+    : BaseServiceContext<MultiDeleteRequest, MultiDeleteResponse>(storage) {}
+
+void MultiDeleteServiceContext::DoRequest(grpc::ServerCompletionQueue *cq) {
+  cq_ = cq;
+  service_->RequestMultiDelete(&ctx_, &request_, &responder_, cq, cq, this);
+}
+
+void MultiDeleteServiceContext::Process() {
+  if (status_ == Status::CREATE) {
+    auto *new_context = new MultiDeleteServiceContext(storage_);
+    new_context->set_service(service_);
+    new_context->DoRequest(cq_);
+
+    status_ = Status::PROCESS;
+
+    bool success = true;
+    for (const auto& key : request_.keys()) {
+      if (!storage_->Delete(key)) {
+        success = false;
+      }
+    }
+
+    response_.set_success(success);
+    response_.set_message(success ? "success" : "partial failure");
+
+    responder_.Finish(response_, grpc::Status::OK, this);
+
+  } else if (status_ == Status::PROCESS) {
+    status_ = Status::FINISH;
+    Recycle();
+  }
+}
+
+void MultiDeleteServiceContext::Recycle() {
+  if (status_ == Status::FINISH) {
+    delete this;
+  }
+}
+
+/************************************************************************/
 /* AsyncKVServiceImpl */
 /************************************************************************/
 AsyncKVServiceImpl::AsyncKVServiceImpl(const std::string &storage_type,
@@ -175,6 +304,18 @@ void AsyncKVServiceImpl::CreateContexts() {
   auto *delete_context = new DeleteServiceContext(storage_);
   delete_context->set_service(service_.get());
   delete_context->DoRequest(cq_.get());
+
+  auto *multi_get_context = new MultiGetServiceContext(storage_);
+  multi_get_context->set_service(service_.get());
+  multi_get_context->DoRequest(cq_.get());
+
+  auto *multi_put_context = new MultiPutServiceContext(storage_);
+  multi_put_context->set_service(service_.get());
+  multi_put_context->DoRequest(cq_.get());
+
+  auto *multi_delete_context = new MultiDeleteServiceContext(storage_);
+  multi_delete_context->set_service(service_.get());
+  multi_delete_context->DoRequest(cq_.get());
 }
 
 void AsyncKVServiceImpl::HandleRequests() {

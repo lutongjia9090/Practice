@@ -100,6 +100,60 @@ private:
 };
 
 /************************************************************************/
+/* MultiGetServiceContext */
+/************************************************************************/
+class MultiGetServiceContext : public BaseServiceContext<MultiGetRequest, MultiGetResponse> {
+public:
+  MultiGetServiceContext(std::unique_ptr<StorageEngine>& storage);
+  ~MultiGetServiceContext() override = default;
+
+  void DoRequest(grpc::ServerCompletionQueue* cq) override;
+  void Process() override;
+  void Recycle() override;
+
+private:
+  enum class Status { CREATE, PROCESS, FINISH };
+  Status status_ = Status::CREATE;
+  grpc::ServerCompletionQueue* cq_ = nullptr;
+};
+
+/************************************************************************/
+/* MultiPutServiceContext */
+/************************************************************************/
+class MultiPutServiceContext : public BaseServiceContext<MultiPutRequest, MultiPutResponse> {
+public:
+  MultiPutServiceContext(std::unique_ptr<StorageEngine>& storage);
+  ~MultiPutServiceContext() override = default;
+
+  void DoRequest(grpc::ServerCompletionQueue* cq) override;
+  void Process() override;
+  void Recycle() override;
+
+private:
+  enum class Status { CREATE, PROCESS, FINISH };
+  Status status_ = Status::CREATE;
+  grpc::ServerCompletionQueue* cq_ = nullptr;
+};
+
+/************************************************************************/
+/* MultiDeleteServiceContext */
+/************************************************************************/
+class MultiDeleteServiceContext : public BaseServiceContext<MultiDeleteRequest, MultiDeleteResponse> {
+public:
+  MultiDeleteServiceContext(std::unique_ptr<StorageEngine>& storage);
+  ~MultiDeleteServiceContext() override = default;
+
+  void DoRequest(grpc::ServerCompletionQueue* cq) override;
+  void Process() override;
+  void Recycle() override;
+
+private:
+  enum class Status { CREATE, PROCESS, FINISH };
+  Status status_ = Status::CREATE;
+  grpc::ServerCompletionQueue* cq_ = nullptr;
+};
+
+/************************************************************************/
 /* AsyncKVServiceImpl */
 /************************************************************************/
 class AsyncKVServiceImpl {

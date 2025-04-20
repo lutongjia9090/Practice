@@ -5,6 +5,8 @@
 #pragma once
 
 #include <string>
+#include <vector>
+#include <utility>
 
 namespace tiny_kv {
 
@@ -12,19 +14,29 @@ enum OperationType {
   KGet,
   KPut,
   KDelete,
+  KMultiGet,
+  KMultiPut,
+  KMultiDelete,
   Invalid,
+};
+
+struct KeyValuePair {
+  std::string key;
+  std::string value;
 };
 
 struct Request {
   OperationType op;
   std::string key;
   std::string value;
+  std::vector<KeyValuePair> kvs;  // for multi-key operations
 };
 
 struct Response {
   bool success;
   std::string message;
   std::string value;
+  std::vector<KeyValuePair> kvs;  // for multi-key operations
 };
 
 #define KV_ASSERT(condition, message)                                          \
