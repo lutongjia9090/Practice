@@ -12,10 +12,14 @@
 
 DEFINE_string(server, "127.0.0.1:8080",
               "The server address in the format of host:port");
+DEFINE_bool(async, false, "Use async client API");
 
 namespace tiny_kv {
 
 const char *kUsageMessage = R"(
+Options:
+  --async                     Use asynchronous client API
+
 Supported Client Commands:
   get <key>                   Get the value of a key
   put <key> <value>           Set a key-value pair
@@ -82,6 +86,34 @@ private:
     command_handlers_["mdel"] = &CommandProcessor::HandleMultiDeleteCommand;
   }
 
+  void HandleCallback(bool success, const std::string &value) {
+    if (success) {
+      printf("(value) %s\n", value.c_str());
+    } else {
+      printf("(error) %s\n", client_->GetLastError().c_str());
+    }
+  }
+
+  void HandleCallback(bool success) {
+    if (success) {
+      printf("(async) OK\n");
+    } else {
+      printf("(async error) %s\n", client_->GetLastError().c_str());
+    }
+  }
+
+  void
+  HandleCallback(bool success,
+                 const std::unordered_map<std::string, std::string> &result) {
+    if (success && !result.empty()) {
+      for (const auto & [ key, value ] : result) {
+        printf("%s: %s\n", key.c_str(), value.c_str());
+      }
+    } else {
+      printf("error or empty result) %s\n", client_->GetLastError().c_str());
+    }
+  }
+
   void HandleGetCommand(std::istringstream &iss) {
     std::string key;
     if (!(iss >> key)) {
@@ -89,11 +121,13 @@ private:
       return;
     }
 
-    auto[success, value] = client_->Get(key);
-    if (success) {
-      printf("(value) %s\n", value.c_str());
+    if (FLAGS_async) {
+      client_->AsyncGet(key, [this](bool success, const std::string &value) {
+        HandleCallback(success, value);
+      });
     } else {
-      printf("(error) %s\n", client_->GetLastError().c_str());
+      auto[success, value] = client_->Get(key);
+      HandleCallback(success, value);
     }
   }
 
@@ -104,10 +138,11 @@ private:
       return;
     }
 
-    if (client_->Put(key, value)) {
-      printf("OK\n");
+    if (FLAGS_async) {
+      client_->AsyncPut(key, value,
+                        [this](bool success) { HandleCallback(success); });
     } else {
-      printf("(error) %s\n", client_->GetLastError().c_str());
+      HandleCallback(client_->Put(key, value));
     }
   }
 
@@ -118,10 +153,11 @@ private:
       return;
     }
 
-    if (client_->Delete(key)) {
-      printf("OK\n");
+    if (FLAGS_async) {
+      client_->AsyncDelete(key,
+                           [this](bool success) { HandleCallback(success); });
     } else {
-      printf("(error) %s\n", client_->GetLastError().c_str());
+      HandleCallback(client_->Delete(key));
     }
   }
 
@@ -138,13 +174,16 @@ private:
       return;
     }
 
-    auto result = client_->MultiGet(keys);
-    if (result.empty()) {
-      printf("(empty result or error: %s)\n", client_->GetLastError().c_str());
+    if (FLAGS_async) {
+      client_->AsyncMultiGet(
+          keys,
+          [this](bool success,
+                 const std::unordered_map<std::string, std::string> &result) {
+            HandleCallback(success, result);
+          });
     } else {
-      for (const auto &[key, value] : result) {
-        printf("%s: %s\n", key.c_str(), value.c_str());
-      }
+      auto result = client_->MultiGet(keys);
+      HandleCallback(!result.empty(), result);
     }
   }
 
@@ -161,10 +200,11 @@ private:
       return;
     }
 
-    if (client_->MultiPut(kv_pairs)) {
-      printf("OK\n");
+    if (FLAGS_async) {
+      client_->AsyncMultiPut(kv_pairs,
+                             [this](bool success) { HandleCallback(success); });
     } else {
-      printf("(error) %s\n", client_->GetLastError().c_str());
+      HandleCallback(client_->MultiPut(kv_pairs));
     }
   }
 
@@ -181,22 +221,22 @@ private:
       return;
     }
 
-    if (client_->MultiDelete(keys)) {
-      printf("OK\n");
+    if (FLAGS_async) {
+      client_->AsyncMultiDelete(
+          keys, [this](bool success) { HandleCallback(success); });
     } else {
-      printf("(error) %s\n", client_->GetLastError().c_str());
+      HandleCallback(client_->MultiDelete(keys));
     }
   }
 
   void PrintUsage(const std::string &cmd) {
     static const std::unordered_map<std::string, std::string> usage_map = {
-      {"get", "Usage: get <key>"},
-      {"put", "Usage: put <key> <value>"},
-      {"delete", "Usage: delete <key>"},
-      {"mget", "Usage: mget <key1> <key2> ..."},
-      {"mput", "Usage: mput <key1> <value1> <key2> <value2> ..."},
-      {"mdel", "Usage: mdel <key1> <key2> ..."}
-    };
+        {"get", "Usage: get <key>"},
+        {"put", "Usage: put <key> <value>"},
+        {"delete", "Usage: delete <key>"},
+        {"mget", "Usage: mget <key1> <key2> ..."},
+        {"mput", "Usage: mput <key1> <value1> <key2> <value2> ..."},
+        {"mdel", "Usage: mdel <key1> <key2> ..."}};
 
     auto it = usage_map.find(cmd);
     if (it != usage_map.end()) {
