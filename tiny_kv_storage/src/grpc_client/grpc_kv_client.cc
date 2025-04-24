@@ -6,6 +6,9 @@
 
 namespace tiny_kv {
 
+/************************************************************************/
+/* GrpcKVClient */
+/************************************************************************/
 GrpcKVClient::GrpcKVClient(const std::string &server_address)
     : server_address_(server_address), connected_(false) {
   running_ = true;
