@@ -5,14 +5,13 @@
 #pragma once
 
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <string>
-#include <unordered_map>
+#include <parallel_hashmap/phmap.h>
 
 namespace tiny_kv {
 
-using KVMap = std::unordered_map<std::string, std::string>;
+using KVMap = phmap::parallel_flat_hash_map<std::string, std::string>;
 
 /************************************************************************/
 /* StorageEngine */
@@ -38,7 +37,6 @@ public:
   KVMap GetAllEntries() override;
 
 private:
-  std::mutex mutex_;
   KVMap data_;
 };
 
@@ -60,7 +58,6 @@ private:
   bool Load();
 
 private:
-  std::mutex mutex_;
   KVMap data_;
   std::string file_path_;
 };

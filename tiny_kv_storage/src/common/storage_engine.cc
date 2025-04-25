@@ -12,13 +12,11 @@ namespace tiny_kv {
 /* MemoryStorage */
 /************************************************************************/
 bool MemoryStorage::Put(const std::string &key, const std::string &value) {
-  std::lock_guard<std::mutex> lock(mutex_);
   data_[key] = value;
   return true;
 }
 
 std::optional<std::string> MemoryStorage::Get(const std::string &key) {
-  std::lock_guard<std::mutex> lock(mutex_);
   auto it = data_.find(key);
   if (it != data_.end()) {
     return it->second;
@@ -28,7 +26,6 @@ std::optional<std::string> MemoryStorage::Get(const std::string &key) {
 }
 
 bool MemoryStorage::Delete(const std::string &key) {
-  std::lock_guard<std::mutex> lock(mutex_);
   auto it = data_.find(key);
   if (it != data_.end()) {
     data_.erase(it);
@@ -39,7 +36,6 @@ bool MemoryStorage::Delete(const std::string &key) {
 }
 
 KVMap MemoryStorage::GetAllEntries() {
-  std::lock_guard<std::mutex> lock(mutex_);
   return data_;
 }
 
@@ -53,13 +49,11 @@ FileStorage::FileStorage(const std::string &file_path) : file_path_(file_path) {
 FileStorage::~FileStorage() { Persist(); }
 
 bool FileStorage::Put(const std::string &key, const std::string &value) {
-  std::lock_guard<std::mutex> lock(mutex_);
   data_[key] = value;
   return true;
 }
 
 std::optional<std::string> FileStorage::Get(const std::string &key) {
-  std::lock_guard<std::mutex> lock(mutex_);
   auto it = data_.find(key);
   if (it != data_.end()) {
     return it->second;
@@ -69,7 +63,6 @@ std::optional<std::string> FileStorage::Get(const std::string &key) {
 }
 
 bool FileStorage::Delete(const std::string &key) {
-  std::lock_guard<std::mutex> lock(mutex_);
   auto it = data_.find(key);
   if (it != data_.end()) {
     data_.erase(it);
@@ -80,7 +73,6 @@ bool FileStorage::Delete(const std::string &key) {
 }
 
 bool FileStorage::Load() {
-  std::lock_guard<std::mutex> lock(mutex_);
   data_.clear();
 
   if (!std::filesystem::exists(file_path_)) {
@@ -113,7 +105,6 @@ bool FileStorage::Load() {
 }
 
 bool FileStorage::Persist() {
-  std::lock_guard<std::mutex> lock(mutex_);
   std::ofstream file(file_path_, std::ios::binary);
   if (!file) {
     return false;
@@ -136,7 +127,6 @@ bool FileStorage::Persist() {
 }
 
 KVMap FileStorage::GetAllEntries() {
-  std::lock_guard<std::mutex> lock(mutex_);
   return data_;
 }
 

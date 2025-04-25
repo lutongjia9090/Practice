@@ -39,6 +39,9 @@ custom_cc_library(
     hdrs = [
         "storage_engine.h",
     ],
+    deps = [
+        "@parallel_hashmap",
+    ],
 )
 
 custom_cc_test(
