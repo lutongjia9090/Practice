@@ -11,6 +11,8 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <sys/epoll.h>
+#include <vector>
 
 namespace tiny_kv {
 
@@ -32,31 +34,41 @@ public:
   std::unique_ptr<StorageEngine> &GetStorageForBenchmark();
 
 private:
+  static constexpr int MAX_EVENTS = 1024;
+  static constexpr int MAX_BUFFER_SIZE = 1024;
+
   struct ClientInfo {
     int fd;
     std::string ip;
     int port;
     bool has_address;
+    std::vector<char> buffer;
   };
 
   ClientInfo GetClientInfo(int fd);
   void LogClientEvent(const ClientInfo &client, const std::string &event);
-  void HandleClientDisconnect(const ClientInfo &client, ssize_t status);
-  void ProcessClientRequest(const ClientInfo &client, const char *buffer);
+  void HandleClientDisconnect(const ClientInfo &client);
+  void ProcessClientRequest(ClientInfo &client);
 
   void InitHandlers();
-  void AcceptConnections();
-  void HandleClient(int client_fd);
-  Request ParseRequest(const char *buffer);
+  bool InitEpoll();
+  void EventLoop();
+  void HandleNewConnection();
+  bool HandleClientData(int client_fd);
+  Request ParseRequest(const std::vector<char> &buffer);
   std::string SerializeResponse(const Response &resp);
+  bool SendResponse(int fd, const std::string &response);
 
 private:
   std::string ip_;
   int port_;
   int server_fd_;
+  int epoll_fd_;
   std::unique_ptr<StorageEngine> storage_;
   std::atomic<bool> running_;
-  std::thread accept_thread_;
+  std::thread event_thread_;
   std::unordered_map<OperationType, RequestHandle> handlers_;
+  std::unordered_map<int, ClientInfo> clients_;
+  struct epoll_event events_[MAX_EVENTS];
 };
 } // namespace tiny_kv

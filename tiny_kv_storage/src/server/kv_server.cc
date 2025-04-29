@@ -12,10 +12,12 @@
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <sys/epoll.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <thread>
 #include <unistd.h>
+#include <unordered_map>
 
 namespace tiny_kv {
 
@@ -25,7 +27,7 @@ namespace tiny_kv {
 KVServer::KVServer(const std::string &ip, int port,
                    const std::string &storage_type,
                    const std::string &storage_path)
-    : ip_(ip), port_(port), server_fd_(-1),
+    : ip_(ip), port_(port), server_fd_(-1), epoll_fd_(-1),
       storage_(CreateStorageEngine(storage_type, storage_path)),
       running_(false) {
   InitHandlers();
@@ -60,14 +62,18 @@ bool KVServer::Start() {
     return false;
   }
 
-  if (listen(server_fd_, 10) < 0) {
+  if (listen(server_fd_, SOMAXCONN) < 0) {
+    close(server_fd_);
+    return false;
+  }
+
+  if (!InitEpoll()) {
     close(server_fd_);
     return false;
   }
 
   running_ = true;
-
-  accept_thread_ = std::thread(&KVServer::AcceptConnections, this);
+  event_thread_ = std::thread(&KVServer::EventLoop, this);
 
   return true;
 }
@@ -79,19 +85,157 @@ void KVServer::Stop() {
 
   running_ = false;
 
+  if (event_thread_.joinable()) {
+    event_thread_.join();
+  }
+
+  for (const auto &client : clients_) {
+    close(client.first);
+  }
+  clients_.clear();
+
+  if (epoll_fd_ >= 0) {
+    close(epoll_fd_);
+    epoll_fd_ = -1;
+  }
+
   if (server_fd_ >= 0) {
     close(server_fd_);
     server_fd_ = -1;
-  }
-
-  if (accept_thread_.joinable()) {
-    accept_thread_.join();
   }
 
   auto *file_storage = dynamic_cast<FileStorage *>(storage_.get());
   if (file_storage) {
     file_storage->Persist();
   }
+}
+
+bool KVServer::InitEpoll() {
+  epoll_fd_ = epoll_create1(0);
+  if (epoll_fd_ < 0) {
+    return false;
+  }
+
+  struct epoll_event event;
+  event.events = EPOLLIN | EPOLLET;
+  event.data.fd = server_fd_;
+
+  if (epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, server_fd_, &event) < 0) {
+    close(epoll_fd_);
+    return false;
+  }
+
+  return true;
+}
+
+void KVServer::EventLoop() {
+  while (running_) {
+    int nfds = epoll_wait(epoll_fd_, events_, MAX_EVENTS, 100);
+    if (nfds < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      break;
+    }
+
+    for (int i = 0; i < nfds; i++) {
+      if (events_[i].data.fd == server_fd_) {
+        HandleNewConnection();
+      } else {
+        if (!HandleClientData(events_[i].data.fd)) {
+          HandleClientDisconnect(clients_[events_[i].data.fd]);
+          clients_.erase(events_[i].data.fd);
+        }
+      }
+    }
+  }
+}
+
+void KVServer::HandleNewConnection() {
+  while (running_) {
+    struct sockaddr_in client_addr;
+    socklen_t addr_len = sizeof(client_addr);
+
+    int client_fd = accept4(server_fd_, (struct sockaddr *)&client_addr,
+                            &addr_len, SOCK_NONBLOCK);
+
+    if (client_fd < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        break;
+      }
+      continue;
+    }
+
+    struct epoll_event event;
+    event.events = EPOLLIN | EPOLLET;
+    event.data.fd = client_fd;
+
+    if (epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, client_fd, &event) < 0) {
+      close(client_fd);
+      continue;
+    }
+
+    ClientInfo client_info = GetClientInfo(client_fd);
+    clients_[client_fd] = std::move(client_info);
+    LogClientEvent(clients_[client_fd], "connected");
+  }
+}
+
+bool KVServer::HandleClientData(int client_fd) {
+  auto &client = clients_[client_fd];
+  char buf[MAX_BUFFER_SIZE];
+
+  while (true) {
+    ssize_t n = read(client_fd, buf, sizeof(buf));
+    if (n < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        break;
+      }
+      return false;
+    }
+
+    if (n == 0) {
+      return false;
+    }
+
+    client.buffer.insert(client.buffer.end(), buf, buf + n);
+  }
+
+  if (!client.buffer.empty()) {
+    ProcessClientRequest(client);
+    client.buffer.clear();
+  }
+
+  return true;
+}
+
+void KVServer::ProcessClientRequest(ClientInfo &client) {
+  Request req = ParseRequest(client.buffer);
+  auto it = handlers_.find(req.op);
+  if (it == handlers_.end()) {
+    Response resp{false, "unknown operation", "", {}};
+    SendResponse(client.fd, SerializeResponse(resp));
+    return;
+  }
+
+  Response resp = it->second(req);
+  SendResponse(client.fd, SerializeResponse(resp));
+}
+
+bool KVServer::SendResponse(int fd, const std::string &response) {
+  size_t total_sent = 0;
+  while (total_sent < response.size()) {
+    ssize_t sent =
+        write(fd, response.c_str() + total_sent, response.size() - total_sent);
+    if (sent < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        continue;
+      }
+      return false;
+    }
+    total_sent += sent;
+  }
+  return true;
 }
 
 void KVServer::InitHandlers() {
@@ -118,7 +262,7 @@ void KVServer::InitHandlers() {
     Response resp{true, "success", "", {}};
     resp.kvs.reserve(req.kvs.size());
 
-    for (const auto& kv : req.kvs) {
+    for (const auto &kv : req.kvs) {
       auto value = storage_->Get(kv.key);
       if (value.has_value()) {
         resp.kvs.push_back({kv.key, *value});
@@ -133,7 +277,7 @@ void KVServer::InitHandlers() {
   handlers_[OperationType::KMultiPut] = [this](const Request &req) -> Response {
     bool success = true;
 
-    for (const auto& kv : req.kvs) {
+    for (const auto &kv : req.kvs) {
       if (!storage_->Put(kv.key, kv.value)) {
         success = false;
       }
@@ -142,10 +286,11 @@ void KVServer::InitHandlers() {
     return {success, success ? "success" : "fail", "", {}};
   };
 
-  handlers_[OperationType::KMultiDelete] = [this](const Request &req) -> Response {
+  handlers_[OperationType::KMultiDelete] =
+      [this](const Request &req) -> Response {
     bool success = true;
 
-    for (const auto& kv : req.kvs) {
+    for (const auto &kv : req.kvs) {
       if (!storage_->Delete(kv.key)) {
         success = false;
       }
@@ -153,64 +298,6 @@ void KVServer::InitHandlers() {
 
     return {success, success ? "success" : "fail", "", {}};
   };
-}
-
-void KVServer::AcceptConnections() {
-  struct sockaddr_in client_addr;
-  socklen_t addr_len = sizeof(client_addr);
-
-  while (running_) {
-    int client_fd = accept4(server_fd_, (struct sockaddr *)&client_addr,
-                            &addr_len, SOCK_NONBLOCK);
-
-    if (client_fd < 0) {
-      if (errno == EAGAIN || errno == EWOULDBLOCK) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        continue;
-      }
-
-      if (!running_) {
-        break;
-      }
-
-      if (running_) {
-        printf("Failed to accept: %s (error: %d)\n", strerror(errno), errno);
-      }
-
-      continue;
-    }
-
-    std::thread client_thread(&KVServer::HandleClient, this, client_fd);
-    client_thread.detach();
-  }
-}
-
-void KVServer::HandleClient(int client_fd) {
-  ClientInfo client = GetClientInfo(client_fd);
-  LogClientEvent(client, "connected and ready for requests");
-
-  char buffer[1024] = {0};
-  bool session_active = true;
-
-  while (running_ && session_active) {
-    memset(buffer, 0, sizeof(buffer));
-    ssize_t bytes_read = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
-
-    if (bytes_read < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      continue;
-    }
-
-    if (bytes_read <= 0) {
-      HandleClientDisconnect(client, bytes_read);
-      session_active = false;
-      continue;
-    }
-
-    ProcessClientRequest(client, buffer);
-  }
-
-  close(client_fd);
 }
 
 KVServer::ClientInfo KVServer::GetClientInfo(int fd) {
@@ -242,33 +329,14 @@ void KVServer::LogClientEvent(const ClientInfo &client,
   fflush(stdout);
 }
 
-void KVServer::HandleClientDisconnect(const ClientInfo &client,
-                                      ssize_t status) {
-  if (status == 0) {
-    LogClientEvent(client, "disconnected normally");
-  } else {
-    LogClientEvent(client, std::string("connection error: ") + strerror(errno));
-  }
+void KVServer::HandleClientDisconnect(const ClientInfo &client) {
+  LogClientEvent(client, "disconnected");
+  epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, client.fd, nullptr);
+  close(client.fd);
 }
 
-void KVServer::ProcessClientRequest(const ClientInfo &client,
-                                    const char *buffer) {
-  Request req = ParseRequest(buffer);
-
-  Response resp;
-  auto it = handlers_.find(req.op);
-  if (it != handlers_.end()) {
-    resp = it->second(req);
-  } else {
-    resp = {false, "unsupport operation", "", {}};
-  }
-
-  std::string resp_str = SerializeResponse(resp);
-  send(client.fd, resp_str.c_str(), resp_str.length(), 0);
-}
-
-Request KVServer::ParseRequest(const char *buffer) {
-  std::string data(buffer);
+Request KVServer::ParseRequest(const std::vector<char> &buffer) {
+  std::string data(buffer.begin(), buffer.end());
   size_t pos = data.find(' ');
   if (pos == std::string::npos) {
     return {OperationType::Invalid, "", "", {}};
@@ -368,7 +436,7 @@ std::string KVServer::SerializeResponse(const Response &resp) {
   }
 
   if (!resp.kvs.empty()) {
-    for (const auto& kv : resp.kvs) {
+    for (const auto &kv : resp.kvs) {
       result += " " + kv.key + " " + kv.value;
     }
   }
