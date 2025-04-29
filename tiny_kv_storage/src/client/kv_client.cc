@@ -5,10 +5,10 @@
 #include "kv_client.h"
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <sstream>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <sstream>
 
 namespace tiny_kv {
 
@@ -84,25 +84,35 @@ bool KVClient::EnsureConnect() {
 }
 
 bool KVClient::SendRequest(const std::string &request) {
-  ssize_t bytes_sent = send(socket_fd_, request.c_str(), request.length(), 0);
-  if (bytes_sent != static_cast<ssize_t>(request.length())) {
+  std::string request_with_delimiter = request + "\r\n";
+  ssize_t bytes_sent = send(socket_fd_, request_with_delimiter.c_str(),
+                            request_with_delimiter.length(), 0);
+  if (bytes_sent != static_cast<ssize_t>(request_with_delimiter.length())) {
     last_error_ = "Failed to send request.";
     return false;
   }
-
   return true;
 }
 
 bool KVClient::ReceiveResponse(std::string &response) {
   char buffer[1024] = {0};
-  ssize_t bytes_read = recv(socket_fd_, buffer, sizeof(buffer) - 1, 0);
-  if (bytes_read <= 0) {
-    last_error_ = "Failed to receive response.";
-    return false;
-  }
+  std::string full_response;
 
-  response = std::string(buffer, bytes_read);
-  return true;
+  while (true) {
+    ssize_t bytes_read = recv(socket_fd_, buffer, sizeof(buffer) - 1, 0);
+    if (bytes_read <= 0) {
+      last_error_ = "Failed to receive response.";
+      return false;
+    }
+
+    full_response.append(buffer, bytes_read);
+
+    size_t pos = full_response.find("\r\n");
+    if (pos != std::string::npos) {
+      response = full_response.substr(0, pos);
+      return true;
+    }
+  }
 }
 
 std::pair<bool, std::string>
@@ -150,8 +160,9 @@ std::pair<bool, std::string> KVClient::ExecuteCmd(const std::string &command,
   return ParseResponse(response);
 }
 
-std::unordered_map<std::string, std::string> KVClient::MultiGet(const std::vector<std::string> &keys) {
-  auto [success, response] = ExecuteMultiCmd("MGET", keys);
+std::unordered_map<std::string, std::string>
+KVClient::MultiGet(const std::vector<std::string> &keys) {
+  auto[success, response] = ExecuteMultiCmd("MGET", keys);
   std::unordered_map<std::string, std::string> result;
 
   if (success) {
@@ -165,23 +176,23 @@ std::unordered_map<std::string, std::string> KVClient::MultiGet(const std::vecto
   return result;
 }
 
-bool KVClient::MultiPut(const std::unordered_map<std::string, std::string> &kv_pairs) {
+bool KVClient::MultiPut(
+    const std::unordered_map<std::string, std::string> &kv_pairs) {
   std::vector<std::string> keys;
-  for (const auto &[key, _] : kv_pairs) {
+  for (const auto & [ key, _ ] : kv_pairs) {
     keys.push_back(key);
   }
-  auto [success, _] = ExecuteMultiCmd("MPUT", keys, kv_pairs);
+  auto[success, _] = ExecuteMultiCmd("MPUT", keys, kv_pairs);
   return success;
 }
 
 bool KVClient::MultiDelete(const std::vector<std::string> &keys) {
-  auto [success, _] = ExecuteMultiCmd("MDEL", keys);
+  auto[success, _] = ExecuteMultiCmd("MDEL", keys);
   return success;
 }
 
 std::pair<bool, std::string> KVClient::ExecuteMultiCmd(
-    const std::string &command,
-    const std::vector<std::string> &keys,
+    const std::string &command, const std::vector<std::string> &keys,
     const std::unordered_map<std::string, std::string> &values) {
   if (!EnsureConnect()) {
     return {false, last_error_};

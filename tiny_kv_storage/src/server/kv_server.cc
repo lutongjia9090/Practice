@@ -199,27 +199,36 @@ bool KVServer::HandleClientData(int client_fd) {
     }
 
     client.buffer.insert(client.buffer.end(), buf, buf + n);
-  }
 
-  if (!client.buffer.empty()) {
-    ProcessClientRequest(client);
-    client.buffer.clear();
+    auto it = std::search(client.buffer.begin(), client.buffer.end(),
+                          std::begin("\r\n"), std::end("\r\n") - 1);
+
+    while (it != client.buffer.end()) {
+      std::vector<char> msg(client.buffer.begin(), it);
+      ProcessClientRequest(client, msg);
+
+      client.buffer.erase(client.buffer.begin(), it + 2);
+
+      it = std::search(client.buffer.begin(), client.buffer.end(),
+                       std::begin("\r\n"), std::end("\r\n") - 1);
+    }
   }
 
   return true;
 }
 
-void KVServer::ProcessClientRequest(ClientInfo &client) {
-  Request req = ParseRequest(client.buffer);
+void KVServer::ProcessClientRequest(ClientInfo &client,
+                                    const std::vector<char> &msg) {
+  std::string request(msg.begin(), msg.end());
+  Request req = ParseRequest(request);
   auto it = handlers_.find(req.op);
   if (it == handlers_.end()) {
     Response resp{false, "unknown operation", "", {}};
-    SendResponse(client.fd, SerializeResponse(resp));
+    SendResponse(client.fd, SerializeResponse(resp) + "\r\n");
     return;
   }
-
   Response resp = it->second(req);
-  SendResponse(client.fd, SerializeResponse(resp));
+  SendResponse(client.fd, SerializeResponse(resp) + "\r\n");
 }
 
 bool KVServer::SendResponse(int fd, const std::string &response) {
@@ -335,8 +344,8 @@ void KVServer::HandleClientDisconnect(const ClientInfo &client) {
   close(client.fd);
 }
 
-Request KVServer::ParseRequest(const std::vector<char> &buffer) {
-  std::string data(buffer.begin(), buffer.end());
+Request KVServer::ParseRequest(const std::string &request) {
+  std::string data = request;
   size_t pos = data.find(' ');
   if (pos == std::string::npos) {
     return {OperationType::Invalid, "", "", {}};

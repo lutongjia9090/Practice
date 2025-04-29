@@ -48,14 +48,14 @@ private:
   ClientInfo GetClientInfo(int fd);
   void LogClientEvent(const ClientInfo &client, const std::string &event);
   void HandleClientDisconnect(const ClientInfo &client);
-  void ProcessClientRequest(ClientInfo &client);
+  void ProcessClientRequest(ClientInfo &client, const std::vector<char> &msg);
 
   void InitHandlers();
   bool InitEpoll();
   void EventLoop();
   void HandleNewConnection();
   bool HandleClientData(int client_fd);
-  Request ParseRequest(const std::vector<char> &buffer);
+  Request ParseRequest(const std::string &request);
   std::string SerializeResponse(const Response &resp);
   bool SendResponse(int fd, const std::string &response);
 
